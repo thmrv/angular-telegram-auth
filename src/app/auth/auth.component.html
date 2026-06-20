@@ -1,0 +1,59 @@
+<div class="container">
+  <h1>{{ 'messages.auth.telegram.heading' }}</h1>
+  <p class="subtitle">{{ 'messages.auth.telegram.subheading' }}</p> <!-- t('messages.auth.telegram.welcome') -->
+
+  <div class="backend-status">
+    <span class="status-dot" [class.online]="backendOnline" [class.offline]="!backendOnline && backendChecked"></span>
+    <span>{{ backendChecked ? (backendOnline ? 'messages.auth.telegram.healthcheck.backendReachable' : 'messages.auth.telegram.healthcheck.backendUnreachable') : 'messages.auth.telegram.healthcheck.checkInProgress' }}</span>
+  </div>
+
+  <div class="telegram-widget-container">
+    <div id="telegram-login-widget"></div>
+  </div>
+
+  <div *ngIf="isLoading" class="auth-actions">
+    <span class="status-badge loading">
+      <span class="loading-spinner" style="margin-right: 8px;"></span>
+      {{ 'messages.auth.telegram.processing' }}
+    </span>
+  </div>
+
+  <div *ngIf="errorMessage" class="error-message">
+    {{ errorMessage }}
+  </div>
+
+  <div *ngIf="successMessage" class="success-message">
+    {{ successMessage }}
+  </div>
+
+  <div *ngIf="requestDetails" style="margin-top: 20px;">
+    <hr class="divider" />
+    <h3 style="font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px;">
+      {{ 'messages.auth.telegram.healthcheck.signIn' }}
+    </h3>
+    <div class="request-details">
+      <div class="request-row" *ngFor="let detail of getRequestDetails()">
+        <span class="label">{{ detail.label }}</span>
+        <pre class="value code">{{ detail.value }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <div *ngIf="backendResponse" style="margin-top: 12px;">
+    <div class="response-details">
+      <pre class="value code">{{ backendResponse | json }}</pre>
+    </div>
+  </div>
+
+  <div *ngIf="isAuthenticated && user" class="user-card">
+    <h3>{{ 'messages.auth.telegram.confirm' }}</h3>
+    <div class="user-info-row" *ngFor="let info of getFormattedUserInfo()">
+      <span class="label">{{ info.label }}</span>
+      <span class="value">{{ info.value }}</span>
+    </div>
+  </div>
+
+  <div *ngIf="!isAuthenticated" style="margin-top: 16px; text-align: center; color: #94a3b8; font-size: 13px;">
+    {{ 'messages.auth.telegram.' }}
+  </div>
+</div>
