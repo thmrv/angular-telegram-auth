@@ -1,6 +1,6 @@
 <div class="container">
-  <h1>Telegram Авторизация</h1>
-  <p class="subtitle">Войдите с помощью аккаунта Telegram</p>
+  <h1>Авторизация</h1>
+  <p class="subtitle">Войти с помощью аккаунта Telegram</p>
 
   <div class="backend-status">
     <span class="status-dot" [class.online]="backendOnline" [class.offline]="!backendOnline && backendChecked"></span>
@@ -15,7 +15,9 @@
   </div>
 
   <div class="telegram-widget-container">
-    <div id="telegram-login-widget"></div>
+    <div id="telegram-login-widget">
+      <button class="tg-auth-button" data-style="square">Войти с Telegram</button>
+    </div>
   </div>
 
   <div *ngIf="isLoading" class="auth-actions">
@@ -72,9 +74,5 @@
       <button class="btn btn-outline" (click)="refreshSession()">Обновить сессию</button>
       <button class="btn" (click)="refreshAuth()">Повторная авторизация</button>
     </div>
-  </div>
-
-  <div *ngIf="!isAuthenticated" style="margin-top: 16px; text-align: center; color: #94a3b8; font-size: 13px;">
-    Нажмите кнопку Telegram выше для входа
   </div>
 </div>

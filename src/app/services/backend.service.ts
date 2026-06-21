@@ -50,7 +50,7 @@ export class BackendService {
           this.csrfTokenSubject.next(response.csrfToken);
           this.sessionIdSubject.next(response.sessionId);
           this.isInitialized = true;
-          console.log('Session initialized with CSRF token');
+          console.log('Session initialized with CSRF token:' + response.csrfToken);
         }
       })
       .catch((error) => {
