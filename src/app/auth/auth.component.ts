@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService, TelegramUser } from '../services/auth.service';
@@ -28,7 +28,9 @@ declare global {
   templateUrl: './auth.component.html',
   styleUrl: './auth.component.css',
 })
-export class AuthComponent implements OnInit, OnDestroy {
+export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
+  @ViewChild('telegramWidget') telegramWidget!: ElementRef;
+
   user: TelegramUser | null = null;
   isLoading = false;
   isAuthenticated = false;
@@ -43,6 +45,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   sessionReady = false;
 
   private subscriptions: Subscription[] = [];
+  private widgetInitialized = false;
 
   constructor(
     private authService: AuthService,
@@ -52,8 +55,6 @@ export class AuthComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.checkBackendHealth();
-
-    // Check session status periodically
     this.updateSessionStatus();
 
     this.subscriptions.push(
@@ -62,7 +63,7 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.user = user;
           this.isAuthenticated = !!user;
           if (user) {
-            this.successMessage = 'Successfully authenticated with Telegram!';
+            this.successMessage = 'Успешная авторизация через Telegram!';
             setTimeout(() => (this.successMessage = null), 5000);
           }
         });
@@ -86,7 +87,10 @@ export class AuthComponent implements OnInit, OnDestroy {
         });
       })
     );
+  }
 
+  ngAfterViewInit(): void {
+    // Initialize the widget after view is ready
     this.initTelegramWidget();
   }
 
@@ -102,7 +106,6 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.sessionId = this.backendService.getSessionId();
     this.sessionReady = this.backendService.isSessionReady();
 
-    // Update periodically
     setInterval(() => {
       this.ngZone.run(() => {
         this.csrfToken = this.backendService.getCsrfToken();
@@ -113,31 +116,28 @@ export class AuthComponent implements OnInit, OnDestroy {
   }
 
   initTelegramWidget(): void {
+    if (this.widgetInitialized) {
+      return;
+    }
+
     const botId = this.authService.getBotId();
 
-    if (window.Telegram && window.Telegram.Login) {
-      window.Telegram.Login.auth({
-        bot_id: botId,
-        request_access: 'write',
-        lang: 'en',
-        onAuth: (user: TelegramUser) => this.handleAuth(user),
-      });
-    } else {
-      console.warn('Telegram Login widget not loaded yet, waiting...');
-      const checkWidget = setInterval(() => {
-        if (window.Telegram && window.Telegram.Login) {
-          clearInterval(checkWidget);
-          window.Telegram.Login.auth({
-            bot_id: botId,
-            request_access: 'write',
-            lang: 'en',
-            onAuth: (user: TelegramUser) => this.handleAuth(user),
-          });
-        }
-      }, 500);
+    // Wait for the Telegram widget script to load
+    const checkWidget = () => {
+      if (window.Telegram && window.Telegram.Login) {
+        this.widgetInitialized = true;
+        window.Telegram.Login.auth({
+          bot_id: botId,
+          request_access: 'write',
+          lang: 'ru',
+          onAuth: (user: TelegramUser) => this.handleAuth(user),
+        });
+      } else {
+        setTimeout(checkWidget, 200);
+      }
+    };
 
-      setTimeout(() => clearInterval(checkWidget), 10000);
-    }
+    checkWidget();
 
     window.onTelegramAuth = (user: TelegramUser) => {
       this.ngZone.run(() => this.handleAuth(user));
@@ -185,14 +185,20 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.ngZone.run(() => {
             this.isLoading = false;
             this.backendResponse = response;
-            this.successMessage = 'Auth data sent to backend!';
+            this.successMessage = 'Данные авторизации отправлены в бэкенд!';
             setTimeout(() => (this.successMessage = null), 5000);
           });
         },
         (err) => {
           this.ngZone.run(() => {
             this.isLoading = false;
-            this.errorMessage = err.message || 'Failed to send auth data to backend';
+            if (err.response) {
+              this.backendResponse = err.response;
+              this.successMessage = 'Запрос выполнен (с предупреждением CORS)';
+              setTimeout(() => (this.successMessage = null), 5000);
+            } else {
+              this.errorMessage = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+            }
           });
         }
       );
@@ -205,7 +211,10 @@ export class AuthComponent implements OnInit, OnDestroy {
       return response;
     } catch (error: any) {
       console.error('Backend auth error:', error);
-      throw new Error(error.message || 'Backend verification failed');
+      if (error.response) {
+        throw error;
+      }
+      throw new Error(error.message || 'Ошибка верификации в бэкенде');
     }
   }
 
@@ -231,11 +240,11 @@ export class AuthComponent implements OnInit, OnDestroy {
         this.csrfToken = response.csrfToken;
         this.sessionId = response.sessionId;
         this.sessionReady = true;
-        this.successMessage = 'Session refreshed with new CSRF token';
+        this.successMessage = 'Сессия обновлена с новым CSRF токеном';
         setTimeout(() => (this.successMessage = null), 3000);
       },
       error: (error) => {
-        this.errorMessage = 'Failed to refresh session: ' + error.message;
+        this.errorMessage = 'Не удалось обновить сессию: ' + error.message;
         setTimeout(() => (this.errorMessage = null), 3000);
       }
     });
@@ -245,11 +254,12 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.authService.logout();
     this.backendResponse = null;
     this.requestDetails = null;
-    this.successMessage = 'Logged out successfully';
+    this.successMessage = 'Выход выполнен успешно';
     setTimeout(() => (this.successMessage = null), 3000);
   }
 
   refreshAuth(): void {
+    this.widgetInitialized = false;
     this.initTelegramWidget();
   }
 
@@ -261,11 +271,12 @@ export class AuthComponent implements OnInit, OnDestroy {
     if (!this.user) return [];
     return [
       { label: 'ID', value: this.user.id },
-      { label: 'First Name', value: this.user.first_name },
-      { label: 'Last Name', value: this.user.last_name || '-' },
-      { label: 'Username', value: this.user.username || '-' },
-      { label: 'Auth Date', value: new Date(this.user.auth_date * 1000).toLocaleString() },
-      { label: 'Hash', value: this.user.hash?.substring(0, 20) + '...' },
+      { label: 'Имя', value: this.user.first_name },
+      { label: 'Фамилия', value: this.user.last_name || '-' },
+      { label: 'Имя пользователя', value: this.user.username || '-' },
+      { label: 'Фото URL', value: this.user.photo_url || '-' },
+      { label: 'Дата авторизации', value: new Date(this.user.auth_date * 1000).toLocaleString('ru-RU') },
+      { label: 'Хеш', value: this.user.hash || '-' },
     ];
   }
 
@@ -273,38 +284,36 @@ export class AuthComponent implements OnInit, OnDestroy {
     if (!this.requestDetails) return [];
     const details = [];
 
-    // Session info
     if (this.requestDetails.session) {
       details.push({
-        label: 'Session ID',
-        value: this.requestDetails.session.sessionId || 'Not available'
+        label: 'ID сессии',
+        value: this.requestDetails.session.sessionId || 'Недоступно'
       });
       details.push({
-        label: 'CSRF Token',
-        value: this.requestDetails.session.csrfToken || 'Not available'
+        label: 'CSRF токен',
+        value: this.requestDetails.session.csrfToken || 'Недоступно'
       });
       details.push({
-        label: 'Session Ready',
-        value: this.requestDetails.session.ready ? 'Yes' : 'No'
+        label: 'Сессия готова',
+        value: this.requestDetails.session.ready ? 'Да' : 'Нет'
       });
     }
 
-    // Request info
     if (this.requestDetails.request) {
       details.push({
         label: 'URL',
         value: this.requestDetails.request.url
       });
       details.push({
-        label: 'Method',
+        label: 'Метод',
         value: this.requestDetails.request.method
       });
       details.push({
-        label: 'Headers',
+        label: 'Заголовки',
         value: JSON.stringify(this.requestDetails.request.headers, null, 2)
       });
       details.push({
-        label: 'Body',
+        label: 'Тело запроса',
         value: JSON.stringify(this.requestDetails.request.body, null, 2)
       });
     }

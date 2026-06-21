@@ -2,3 +2,132 @@
   display: block;
   width: 100%;
 }
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.auth-info-section {
+  margin-top: 20px;
+}
+
+.user-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.user-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.user-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid #e2e8f0;
+  object-fit: cover;
+}
+
+.user-info-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2px;
+}
+
+.user-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eef2f6;
+  font-size: 14px;
+}
+
+.user-info-row:last-child {
+  border-bottom: none;
+}
+
+.user-info-row .label {
+  color: #64748b;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.user-info-row .value {
+  color: #0f172a;
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+  max-width: 60%;
+}
+
+.request-details,
+.response-details {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.request-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.request-row:last-child {
+  border-bottom: none;
+}
+
+.request-row .label {
+  font-weight: 500;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.request-row .value,
+.response-details .value {
+  color: #0f172a;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: transparent;
+}
+
+.response-details .value {
+  background: #f1f5f9;
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+@media (max-width: 480px) {
+  .user-info-row {
+    flex-direction: column;
+    padding: 12px 0;
+    gap: 4px;
+  }
+
+  .user-info-row .value {
+    max-width: 100%;
+    text-align: left;
+  }
+}
