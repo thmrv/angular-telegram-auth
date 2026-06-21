@@ -1,25 +1,10 @@
-import { Component, OnInit, OnDestroy, NgZone, AfterViewInit, ElementRef, ViewChild } from '@angular/core';
+import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { AuthService, TelegramUser } from '../services/auth.service';
 import { BackendService } from '../services/backend.service';
 import { Subscription } from 'rxjs';
-
-declare global {
-  interface Window {
-    onTelegramAuth: (user: TelegramUser) => void;
-    Telegram: {
-      Login: {
-        auth: (options: {
-          bot_id: string;
-          request_access?: string;
-          lang?: string;
-          onAuth: (user: TelegramUser) => void;
-        }) => void;
-      };
-    };
-  }
-}
 
 @Component({
   selector: 'app-auth',
@@ -28,9 +13,7 @@ declare global {
   templateUrl: './auth.component.html',
   styleUrl: './auth.component.css',
 })
-export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
-  @ViewChild('telegramWidget') telegramWidget!: ElementRef;
-
+export class AuthComponent implements OnInit, OnDestroy {
   user: TelegramUser | null = null;
   isLoading = false;
   isAuthenticated = false;
@@ -43,15 +26,18 @@ export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
   csrfToken: string | null = null;
   sessionId: string | null = null;
   sessionReady = false;
+  botId: string = '';
 
   private subscriptions: Subscription[] = [];
-  private widgetInitialized = false;
 
   constructor(
     private authService: AuthService,
     private backendService: BackendService,
-    private ngZone: NgZone
-  ) {}
+    private ngZone: NgZone,
+    private sanitizer: DomSanitizer
+  ) {
+    this.botId = this.authService.getBotId();
+  }
 
   ngOnInit(): void {
     this.checkBackendHealth();
@@ -87,17 +73,40 @@ export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
         });
       })
     );
-  }
 
-  ngAfterViewInit(): void {
-    // Initialize the widget after view is ready
-    this.initTelegramWidget();
+    // Listen for messages from the Telegram widget iframe
+    window.addEventListener('message', this.handleTelegramMessage.bind(this));
   }
 
   ngOnDestroy(): void {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
-    if (window.onTelegramAuth) {
-      window.onTelegramAuth = () => {};
+    window.removeEventListener('message', this.handleTelegramMessage.bind(this));
+  }
+
+  handleTelegramMessage(event: MessageEvent): void {
+    // Check if the message is from the Telegram widget
+    if (event.origin !== 'https://oauth.telegram.org') {
+      return;
+    }
+
+    try {
+      const data = JSON.parse(event.data);
+      if (data && data.id && data.auth_date && data.hash) {
+        this.ngZone.run(() => {
+          const user: TelegramUser = {
+            id: data.id,
+            first_name: data.first_name || '',
+            last_name: data.last_name || '',
+            username: data.username || '',
+            photo_url: data.photo_url || '',
+            auth_date: data.auth_date,
+            hash: data.hash
+          };
+          this.handleAuth(user);
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to parse Telegram widget message:', e);
     }
   }
 
@@ -115,33 +124,10 @@ export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
     }, 5000);
   }
 
-  initTelegramWidget(): void {
-    if (this.widgetInitialized) {
-      return;
-    }
-
-    const botId = this.authService.getBotId();
-
-    // Wait for the Telegram widget script to load
-    const checkWidget = () => {
-      if (window.Telegram && window.Telegram.Login) {
-        this.widgetInitialized = true;
-        window.Telegram.Login.auth({
-          bot_id: botId,
-          request_access: 'write',
-          lang: 'ru',
-          onAuth: (user: TelegramUser) => this.handleAuth(user),
-        });
-      } else {
-        setTimeout(checkWidget, 200);
-      }
-    };
-
-    checkWidget();
-
-    window.onTelegramAuth = (user: TelegramUser) => {
-      this.ngZone.run(() => this.handleAuth(user));
-    };
+  getTelegramWidgetUrl(): SafeResourceUrl {
+    const redirectUrl = window.location.origin;
+    const url = `https://oauth.telegram.org/embed/${this.botId}?size=large&origin=${encodeURIComponent(redirectUrl)}&request_access=write&return_to=${encodeURIComponent(redirectUrl)}`;
+    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
   }
 
   handleAuth(user: TelegramUser): void {
@@ -259,8 +245,14 @@ export class AuthComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   refreshAuth(): void {
-    this.widgetInitialized = false;
-    this.initTelegramWidget();
+    // Force reload the iframe by re-rendering
+    const widgetContainer = document.getElementById('telegram-login-widget');
+    if (widgetContainer) {
+      const iframe = widgetContainer.querySelector('iframe');
+      if (iframe) {
+        iframe.src = iframe.src;
+      }
+    }
   }
 
   getBotId(): string {

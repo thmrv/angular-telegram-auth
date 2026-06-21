@@ -14,9 +14,21 @@
     Сессия: {{ sessionId.substring(0, 20) }}...
   </div>
 
-  <!-- Telegram Login Button -->
+  <!-- Telegram Login Button - Using iframe approach -->
   <div class="telegram-widget-container">
-    <div id="telegram-login-widget"></div>
+    <div id="telegram-login-widget">
+      <iframe
+        *ngIf="botId"
+        [src]="getTelegramWidgetUrl() | safeUrl"
+        width="186"
+        height="36"
+        frameborder="0"
+        scrolling="no"
+        style="border: none;"
+        allowtransparency="true"
+        class="telegram-login-iframe"
+      ></iframe>
+    </div>
   </div>
 
   <div *ngIf="isLoading" class="auth-actions">
