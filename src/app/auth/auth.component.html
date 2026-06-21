@@ -1,10 +1,17 @@
 <div class="container">
-  <h1>{{ 'messages.auth.telegram.heading' }}</h1>
-  <p class="subtitle">{{ 'messages.auth.telegram.subheading' }}</p> <!-- t('messages.auth.telegram.welcome') -->
+  <h1>Telegram Auth</h1>
+  <p class="subtitle">Sign in with your Telegram account</p>
 
   <div class="backend-status">
     <span class="status-dot" [class.online]="backendOnline" [class.offline]="!backendOnline && backendChecked"></span>
-    <span>{{ backendChecked ? (backendOnline ? 'messages.auth.telegram.healthcheck.backendReachable' : 'messages.auth.telegram.healthcheck.backendUnreachable') : 'messages.auth.telegram.healthcheck.checkInProgress' }}</span>
+    <span>{{ backendChecked ? (backendOnline ? 'Backend online' : 'Backend offline') : 'Checking backend...' }}</span>
+    <span *ngIf="backendOnline" style="margin-left: 12px; font-size: 12px; color: #64748b;">
+      CSRF: {{ csrfToken ? 'Available' : 'Loading...' }}
+    </span>
+  </div>
+
+  <div *ngIf="sessionReady && sessionId" style="font-size: 12px; color: #64748b; margin-top: 4px; word-break: break-all;">
+    Session: {{ sessionId.substring(0, 20) }}...
   </div>
 
   <div class="telegram-widget-container">
@@ -14,7 +21,7 @@
   <div *ngIf="isLoading" class="auth-actions">
     <span class="status-badge loading">
       <span class="loading-spinner" style="margin-right: 8px;"></span>
-      {{ 'messages.auth.telegram.processing' }}
+      Processing...
     </span>
   </div>
 
@@ -26,10 +33,14 @@
     {{ successMessage }}
   </div>
 
+  <div *ngIf="!sessionReady && backendOnline" style="margin-top: 12px; padding: 12px; background: #fef9c3; border-radius: 8px; font-size: 13px; color: #854d0e;">
+    Initializing session and fetching CSRF token...
+  </div>
+
   <div *ngIf="requestDetails" style="margin-top: 20px;">
     <hr class="divider" />
     <h3 style="font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px;">
-      {{ 'messages.auth.telegram.healthcheck.signIn' }}
+      Request to External Backend
     </h3>
     <div class="request-details">
       <div class="request-row" *ngFor="let detail of getRequestDetails()">
@@ -40,20 +51,30 @@
   </div>
 
   <div *ngIf="backendResponse" style="margin-top: 12px;">
+    <hr class="divider" />
+    <h3 style="font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 12px;">
+      Backend Response
+    </h3>
     <div class="response-details">
       <pre class="value code">{{ backendResponse | json }}</pre>
     </div>
   </div>
 
   <div *ngIf="isAuthenticated && user" class="user-card">
-    <h3>{{ 'messages.auth.telegram.confirm' }}</h3>
+    <h3>User Info</h3>
     <div class="user-info-row" *ngFor="let info of getFormattedUserInfo()">
       <span class="label">{{ info.label }}</span>
       <span class="value">{{ info.value }}</span>
     </div>
+
+    <div class="auth-actions">
+      <button class="btn btn-outline" (click)="logout()">Logout</button>
+      <button class="btn btn-outline" (click)="refreshSession()">Refresh Session</button>
+      <button class="btn" (click)="refreshAuth()">Re-authenticate</button>
+    </div>
   </div>
 
   <div *ngIf="!isAuthenticated" style="margin-top: 16px; text-align: center; color: #94a3b8; font-size: 13px;">
-    {{ 'messages.auth.telegram.' }}
+    Click the Telegram button above to sign in
   </div>
 </div>

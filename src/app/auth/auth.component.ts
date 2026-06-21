@@ -38,6 +38,9 @@ export class AuthComponent implements OnInit, OnDestroy {
   backendChecked = false;
   backendResponse: any = null;
   requestDetails: any = null;
+  csrfToken: string | null = null;
+  sessionId: string | null = null;
+  sessionReady = false;
 
   private subscriptions: Subscription[] = [];
 
@@ -49,6 +52,9 @@ export class AuthComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.checkBackendHealth();
+
+    // Check session status periodically
+    this.updateSessionStatus();
 
     this.subscriptions.push(
       this.authService.user$.subscribe((user) => {
@@ -89,6 +95,21 @@ export class AuthComponent implements OnInit, OnDestroy {
     if (window.onTelegramAuth) {
       window.onTelegramAuth = () => {};
     }
+  }
+
+  updateSessionStatus(): void {
+    this.csrfToken = this.backendService.getCsrfToken();
+    this.sessionId = this.backendService.getSessionId();
+    this.sessionReady = this.backendService.isSessionReady();
+
+    // Update periodically
+    setInterval(() => {
+      this.ngZone.run(() => {
+        this.csrfToken = this.backendService.getCsrfToken();
+        this.sessionId = this.backendService.getSessionId();
+        this.sessionReady = this.backendService.isSessionReady();
+      });
+    }, 5000);
   }
 
   initTelegramWidget(): void {
@@ -132,20 +153,30 @@ export class AuthComponent implements OnInit, OnDestroy {
 
       this.authService.setUser(user);
 
+      const csrfToken = this.backendService.getCsrfToken();
+
       this.requestDetails = {
-        url: 'https://luckystack.redpillvps.pro/api/auth/login/telegram', // `${this.network.apiDomain}`
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
+        session: {
+          sessionId: this.backendService.getSessionId(),
+          csrfToken: csrfToken,
+          ready: this.backendService.isSessionReady()
         },
-        body: {
-          id: user.id,
-          first_name: user.first_name || '',
-          last_name: user.last_name || '',
-          username: user.username || '',
-          photo_url: user.photo_url || '',
-          auth_date: user.auth_date,
-          hash: user.hash || ''
+        request: {
+          url: 'https://luckystack.redpillvps.pro/api/auth/login/telegram',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
+          },
+          body: {
+            id: user.id,
+            first_name: user.first_name || '',
+            last_name: user.last_name || '',
+            username: user.username || '',
+            photo_url: user.photo_url || '',
+            auth_date: user.auth_date,
+            hash: user.hash || ''
+          }
         }
       };
 
@@ -182,11 +213,32 @@ export class AuthComponent implements OnInit, OnDestroy {
     try {
       const response = await this.backendService.healthCheck().toPromise();
       this.backendOnline = response?.status === 'online';
+      if (response?.csrfAvailable) {
+        this.csrfToken = this.backendService.getCsrfToken();
+        this.sessionId = this.backendService.getSessionId();
+        this.sessionReady = this.backendService.isSessionReady();
+      }
     } catch (error) {
       this.backendOnline = false;
     } finally {
       this.backendChecked = true;
     }
+  }
+
+  refreshSession(): void {
+    this.backendService.refreshSession().subscribe({
+      next: (response) => {
+        this.csrfToken = response.csrfToken;
+        this.sessionId = response.sessionId;
+        this.sessionReady = true;
+        this.successMessage = 'Session refreshed with new CSRF token';
+        setTimeout(() => (this.successMessage = null), 3000);
+      },
+      error: (error) => {
+        this.errorMessage = 'Failed to refresh session: ' + error.message;
+        setTimeout(() => (this.errorMessage = null), 3000);
+      }
+    });
   }
 
   logout(): void {
@@ -219,11 +271,44 @@ export class AuthComponent implements OnInit, OnDestroy {
 
   getRequestDetails(): { label: string; value: string }[] {
     if (!this.requestDetails) return [];
-    return [
-      { label: 'URL', value: this.requestDetails.url },
-      { label: 'Method', value: this.requestDetails.method },
-      { label: 'Headers', value: JSON.stringify(this.requestDetails.headers, null, 2) },
-      { label: 'Body', value: JSON.stringify(this.requestDetails.body, null, 2) },
-    ];
+    const details = [];
+
+    // Session info
+    if (this.requestDetails.session) {
+      details.push({
+        label: 'Session ID',
+        value: this.requestDetails.session.sessionId || 'Not available'
+      });
+      details.push({
+        label: 'CSRF Token',
+        value: this.requestDetails.session.csrfToken || 'Not available'
+      });
+      details.push({
+        label: 'Session Ready',
+        value: this.requestDetails.session.ready ? 'Yes' : 'No'
+      });
+    }
+
+    // Request info
+    if (this.requestDetails.request) {
+      details.push({
+        label: 'URL',
+        value: this.requestDetails.request.url
+      });
+      details.push({
+        label: 'Method',
+        value: this.requestDetails.request.method
+      });
+      details.push({
+        label: 'Headers',
+        value: JSON.stringify(this.requestDetails.request.headers, null, 2)
+      });
+      details.push({
+        label: 'Body',
+        value: JSON.stringify(this.requestDetails.request.body, null, 2)
+      });
+    }
+
+    return details;
   }
 }
