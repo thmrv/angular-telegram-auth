@@ -1,8 +1,8 @@
 export const environment = {
   production: true,
-  // In production, use full URL (no proxy available)
-  backendUrl: 'https://luckystack.redpillvps.pro',
+  // On Vercel, use relative path so rewrites handle the proxy
+  backendUrl: '',
   sessionEndpoint: '/api/auth/session',
   loginEndpoint: '/api/auth/login/telegram',
-  useProxy: false
+  useProxy: true
 };

@@ -1,6 +1,6 @@
 export const environment = {
   production: false,
-  // Use relative path to go through proxy
+  // Local development - use proxy.conf.json
   backendUrl: '',
   sessionEndpoint: '/api/auth/session',
   loginEndpoint: '/api/auth/login/telegram',
