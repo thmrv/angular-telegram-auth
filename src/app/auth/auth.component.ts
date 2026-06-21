@@ -4,12 +4,13 @@ import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { AuthService, TelegramUser } from '../services/auth.service';
 import { BackendService } from '../services/backend.service';
+import { SafeUrlPipe } from '../pipes/safe-url.pipe';
 import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-auth',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SafeUrlPipe],
   templateUrl: './auth.component.html',
   styleUrl: './auth.component.css',
 })
@@ -74,7 +75,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Listen for messages from the Telegram widget iframe
     window.addEventListener('message', this.handleTelegramMessage.bind(this));
   }
 
@@ -84,7 +84,6 @@ export class AuthComponent implements OnInit, OnDestroy {
   }
 
   handleTelegramMessage(event: MessageEvent): void {
-    // Check if the message is from the Telegram widget
     if (event.origin !== 'https://oauth.telegram.org') {
       return;
     }
@@ -124,10 +123,9 @@ export class AuthComponent implements OnInit, OnDestroy {
     }, 5000);
   }
 
-  getTelegramWidgetUrl(): SafeResourceUrl {
+  getTelegramWidgetUrl(): string {
     const redirectUrl = window.location.origin;
-    const url = `https://oauth.telegram.org/embed/${this.botId}?size=large&origin=${encodeURIComponent(redirectUrl)}&request_access=write&return_to=${encodeURIComponent(redirectUrl)}`;
-    return this.sanitizer.bypassSecurityTrustResourceUrl(url);
+    return `https://oauth.telegram.org/embed/${this.botId}?size=large&origin=${encodeURIComponent(redirectUrl)}&request_access=write&return_to=${encodeURIComponent(redirectUrl)}`;
   }
 
   handleAuth(user: TelegramUser): void {
@@ -245,7 +243,6 @@ export class AuthComponent implements OnInit, OnDestroy {
   }
 
   refreshAuth(): void {
-    // Force reload the iframe by re-rendering
     const widgetContainer = document.getElementById('telegram-login-widget');
     if (widgetContainer) {
       const iframe = widgetContainer.querySelector('iframe');
