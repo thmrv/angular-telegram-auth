@@ -26,8 +26,9 @@ export interface AuthResponse {
 })
 export class BackendService {
   private readonly BASE_URL = environment.backendUrl;
-  private readonly SESSION_ENDPOINT = '/api/auth/session';
-  private readonly LOGIN_ENDPOINT = '/api/auth/login/telegram';
+  private readonly SESSION_ENDPOINT = environment.sessionEndpoint;
+  private readonly LOGIN_ENDPOINT = environment.loginEndpoint;
+  private readonly USE_PROXY = environment.useProxy;
 
   private csrfTokenSubject = new BehaviorSubject<string | null>(null);
   private sessionIdSubject = new BehaviorSubject<string | null>(null);
@@ -36,6 +37,15 @@ export class BackendService {
 
   constructor(private http: HttpClient) {
     this.initializeSession();
+  }
+
+  private getFullUrl(endpoint: string): string {
+    if (this.USE_PROXY) {
+      // When using proxy, just use the endpoint path
+      return endpoint;
+    }
+    // In production, use full URL
+    return `${this.BASE_URL}${endpoint}`;
   }
 
   private initializeSession(): void {
@@ -50,7 +60,7 @@ export class BackendService {
           this.csrfTokenSubject.next(response.csrfToken);
           this.sessionIdSubject.next(response.sessionId);
           this.isInitialized = true;
-          console.log('Session initialized with CSRF token:' + response.csrfToken);
+          console.log('Session initialized with CSRF token');
         }
       })
       .catch((error) => {
@@ -63,25 +73,17 @@ export class BackendService {
   }
 
   fetchSession(): Observable<SessionResponse> {
-    const url = `${this.BASE_URL}${this.SESSION_ENDPOINT}`;
+    const url = this.getFullUrl(this.SESSION_ENDPOINT);
     console.log('Fetching session from:', url);
 
-    return this.http.get<SessionResponse>(url, { observe: 'response' })
+    return this.http.get<SessionResponse>(url)
       .pipe(
         timeout(10000),
-        map((response) => {
-          if (response.status === 200 && response.body) {
-            console.log('Session response:', response.body);
-            return response.body;
-          } else {
-            throw new Error(`Session request failed with status: ${response.status}`);
-          }
+        tap((response) => {
+          console.log('Session response:', response);
         }),
         catchError((error) => {
-          if (error.error && typeof error.error === 'object') {
-            console.warn('Session request had CORS warning but got response:', error.error);
-            return of(error.error);
-          }
+          console.error('Session fetch error:', error);
           return this.handleError(error);
         })
       );
@@ -134,7 +136,7 @@ export class BackendService {
   verifyAuth(user: TelegramUser): Observable<AuthResponse> {
     return this.ensureSessionInitialized().pipe(
       switchMap(() => {
-        const url = `${this.BASE_URL}${this.LOGIN_ENDPOINT}`;
+        const url = this.getFullUrl(this.LOGIN_ENDPOINT);
         const csrfToken = this.csrfTokenSubject.value;
 
         if (!csrfToken) {
@@ -160,57 +162,53 @@ export class BackendService {
         console.log('With CSRF token:', csrfToken);
         console.log('Payload:', payload);
 
-        return this.http.post<AuthResponse>(url, payload, { 
-          headers: headers,
-          observe: 'response'
-        })
+        return this.http.post<AuthResponse>(url, payload, { headers })
           .pipe(
             timeout(10000),
             map((response) => {
-              console.log('Auth response status:', response.status);
-              console.log('Auth response body:', response.body);
-              
-              if (response.status === 200 && response.body) {
-                const body = response.body;
-                
-                const result: AuthResponse = {
-                  success: body.success !== undefined ? body.success : true
-                };
-                
-                Object.keys(body).forEach(key => {
-                  if (key !== 'success') {
-                    result[key] = body[key];
-                  }
-                });
-                return result;
-              } else {
-                throw new Error(`Request failed with status: ${response.status}`);
-              }
+              console.log('Auth response:', response);
+              const result: AuthResponse = {
+                success: response.success !== undefined ? response.success : true
+              };
+              Object.keys(response).forEach(key => {
+                if (key !== 'success') {
+                  result[key] = response[key];
+                }
+              });
+              return result;
             }),
             catchError((error) => {
-              if (error.error && typeof error.error === 'object') {
-                console.warn('Auth request had CORS warning but got response:', error.error);
-                const body = error.error;
-                const result: AuthResponse = {
-                  success: body.success !== undefined ? body.success : true
-                };
-                Object.keys(body).forEach(key => {
-                  if (key !== 'success') {
-                    result[key] = body[key];
-                  }
-                });
-                return of(result);
+              if (error.status === 403 || error.status === 401) {
+                console.warn('CSRF token may be invalid, refreshing...');
+                return this.refreshSession().pipe(
+                  switchMap(() => {
+                    const newCsrfToken = this.csrfTokenSubject.value;
+                    const newHeaders = new HttpHeaders({
+                      'Content-Type': 'application/json',
+                      'X-CSRF-TOKEN': newCsrfToken || ''
+                    });
+
+                    console.log('Retrying with new CSRF token:', newCsrfToken);
+
+                    return this.http.post<AuthResponse>(url, payload, { headers: newHeaders })
+                      .pipe(
+                        timeout(10000),
+                        map((retryResponse) => {
+                          const result: AuthResponse = {
+                            success: retryResponse.success !== undefined ? retryResponse.success : true
+                          };
+                          Object.keys(retryResponse).forEach(key => {
+                            if (key !== 'success') {
+                              result[key] = retryResponse[key];
+                            }
+                          });
+                          return result;
+                        }),
+                        catchError(this.handleError)
+                      );
+                  })
+                );
               }
-              
-              if (error.status === 0 && error.message && error.message.includes('CORS')) {
-                console.warn('CORS error detected but request may have succeeded');
-                return of({
-                  success: true,
-                  message: 'Request sent (CORS warning but likely succeeded)',
-                  status: 'pending'
-                });
-              }
-              
               return this.handleError(error);
             })
           );
@@ -250,19 +248,19 @@ export class BackendService {
     } else {
       switch (error.status) {
         case 0:
-          errorMessage = 'Network error';
+          errorMessage = 'Network error - CORS or connection issue';
           break;
         case 403:
-          errorMessage = 'Forbidden';
+          errorMessage = 'Forbidden - Invalid CSRF token or session expired';
           break;
         case 401:
-          errorMessage = 'Unauthorized';
+          errorMessage = 'Unauthorized - Session invalid';
           break;
         case 404:
-          errorMessage = 'Endpoint not found (404)';
+          errorMessage = 'Endpoint not found (404) - The API path may be incorrect';
           break;
         case 500:
-          errorMessage = 'Internal server error (500)';
+          errorMessage = 'Internal server error (500) - Backend issue';
           break;
         default:
           errorMessage = error.error?.message || `Server error: ${error.status}`;
