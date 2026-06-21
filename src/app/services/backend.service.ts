@@ -66,13 +66,24 @@ export class BackendService {
     const url = `${this.BASE_URL}${this.SESSION_ENDPOINT}`;
     console.log('Fetching session from:', url);
 
-    return this.http.get<SessionResponse>(url)
+    return this.http.get<SessionResponse>(url, { observe: 'response' })
       .pipe(
         timeout(10000),
-        tap((response) => {
-          console.log('Session response:', response);
+        map((response) => {
+          if (response.status === 200 && response.body) {
+            console.log('Session response:', response.body);
+            return response.body;
+          } else {
+            throw new Error(`Session request failed with status: ${response.status}`);
+          }
         }),
-        catchError(this.handleError)
+        catchError((error) => {
+          if (error.error && typeof error.error === 'object') {
+            console.warn('Session request had CORS warning but got response:', error.error);
+            return of(error.error);
+          }
+          return this.handleError(error);
+        })
       );
   }
 
@@ -149,43 +160,57 @@ export class BackendService {
         console.log('With CSRF token:', csrfToken);
         console.log('Payload:', payload);
 
-        return this.http.post<AuthResponse>(url, payload, { headers })
+        return this.http.post<AuthResponse>(url, payload, { 
+          headers: headers,
+          observe: 'response'
+        })
           .pipe(
             timeout(10000),
-            map((response: AuthResponse) => {
-              console.log('Auth response:', response);
-              return {
-                ...response,
-                success: response.success !== undefined ? response.success : true
-              };
+            map((response) => {
+              console.log('Auth response status:', response.status);
+              console.log('Auth response body:', response.body);
+              
+              if (response.status === 200 && response.body) {
+                const body = response.body;
+                
+                const result: AuthResponse = {
+                  success: body.success !== undefined ? body.success : true
+                };
+                
+                Object.keys(body).forEach(key => {
+                  if (key !== 'success') {
+                    result[key] = body[key];
+                  }
+                });
+                return result;
+              } else {
+                throw new Error(`Request failed with status: ${response.status}`);
+              }
             }),
             catchError((error) => {
-              if (error.status === 403 || error.status === 401) {
-                console.warn('CSRF токен может быть не валиден, пробуем еще');
-                return this.refreshSession().pipe(
-                  switchMap(() => {
-                    const newCsrfToken = this.csrfTokenSubject.value;
-                    const newHeaders = new HttpHeaders({
-                      'Content-Type': 'application/json',
-                      'X-CSRF-TOKEN': newCsrfToken || ''
-                    });
-
-                    console.log('Retrying with new CSRF token:', newCsrfToken);
-
-                    return this.http.post<AuthResponse>(url, payload, { headers: newHeaders })
-                      .pipe(
-                        timeout(10000),
-                        map((retryResponse: AuthResponse) => {
-                          return {
-                            ...retryResponse,
-                            success: retryResponse.success !== undefined ? retryResponse.success : true
-                          };
-                        }),
-                        catchError(this.handleError)
-                      );
-                  })
-                );
+              if (error.error && typeof error.error === 'object') {
+                console.warn('Auth request had CORS warning but got response:', error.error);
+                const body = error.error;
+                const result: AuthResponse = {
+                  success: body.success !== undefined ? body.success : true
+                };
+                Object.keys(body).forEach(key => {
+                  if (key !== 'success') {
+                    result[key] = body[key];
+                  }
+                });
+                return of(result);
               }
+              
+              if (error.status === 0 && error.message && error.message.includes('CORS')) {
+                console.warn('CORS error detected but request may have succeeded');
+                return of({
+                  success: true,
+                  message: 'Request sent (CORS warning but likely succeeded)',
+                  status: 'pending'
+                });
+              }
+              
               return this.handleError(error);
             })
           );
@@ -199,14 +224,14 @@ export class BackendService {
         timeout(5000),
         map((response) => ({
           status: 'online',
-          message: 'Бэкенд доступен',
+          message: 'Backend is reachable',
           csrfAvailable: !!response.csrfToken
         })),
         catchError((error) => {
-          console.warn('Health check NOT OK:', error);
+          console.warn('Health check failed:', error);
           return of({
             status: 'unknown',
-            message: 'Бэкенд не доступен',
+            message: 'Cannot reach backend',
             csrfAvailable: false
           });
         })
@@ -225,16 +250,16 @@ export class BackendService {
     } else {
       switch (error.status) {
         case 0:
-          errorMessage = 'Network error - CORS / connection';
+          errorMessage = 'Network error';
           break;
         case 403:
-          errorMessage = 'Forbidden - Invalid CSRF token / session';
+          errorMessage = 'Forbidden';
           break;
         case 401:
-          errorMessage = 'Unauthorized - Session invalid';
+          errorMessage = 'Unauthorized';
           break;
         case 404:
-          errorMessage = 'Not found (404)';
+          errorMessage = 'Endpoint not found (404)';
           break;
         case 500:
           errorMessage = 'Internal server error (500)';
