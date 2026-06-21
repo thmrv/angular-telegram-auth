@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError, of, BehaviorSubject } from 'rxjs';
-import { catchError, map, timeout, tap, switchMap, first } from 'rxjs/operators';
+import { catchError, map, timeout, tap, switchMap } from 'rxjs/operators';
 import { TelegramUser } from './auth.service';
 import { environment } from '../../environments/environment';
 
@@ -35,14 +35,9 @@ export class BackendService {
   private initializationPromise: Promise<void> | null = null;
 
   constructor(private http: HttpClient) {
-    // Initialize session on service creation
     this.initializeSession();
   }
 
-  /**
-   * Initialize the session and get CSRF token
-   * This should be called once when the app starts
-   */
   private initializeSession(): void {
     if (this.initializationPromise) {
       return;
@@ -60,7 +55,6 @@ export class BackendService {
       })
       .catch((error) => {
         console.error('Failed to initialize session:', error);
-        // Retry after 5 seconds
         setTimeout(() => {
           this.initializationPromise = null;
           this.initializeSession();
@@ -68,9 +62,6 @@ export class BackendService {
       });
   }
 
-  /**
-   * Fetch session data from the backend
-   */
   fetchSession(): Observable<SessionResponse> {
     const url = `${this.BASE_URL}${this.SESSION_ENDPOINT}`;
     console.log('Fetching session from:', url);
@@ -85,15 +76,11 @@ export class BackendService {
       );
   }
 
-  /**
-   * Ensure session is initialized before making authenticated requests
-   */
   private ensureSessionInitialized(): Observable<boolean> {
     if (this.isInitialized && this.csrfTokenSubject.value) {
       return of(true);
     }
 
-    // If not initialized, wait for initialization
     return new Observable<boolean>((observer) => {
       const checkInterval = setInterval(() => {
         if (this.isInitialized && this.csrfTokenSubject.value) {
@@ -103,7 +90,6 @@ export class BackendService {
         }
       }, 100);
 
-      // Timeout after 10 seconds
       setTimeout(() => {
         clearInterval(checkInterval);
         observer.error(new Error('Session initialization timeout'));
@@ -111,23 +97,14 @@ export class BackendService {
     });
   }
 
-  /**
-   * Get the current CSRF token
-   */
   getCsrfToken(): string | null {
     return this.csrfTokenSubject.value;
   }
 
-  /**
-   * Get the current session ID
-   */
   getSessionId(): string | null {
     return this.sessionIdSubject.value;
   }
 
-  /**
-   * Refresh the session (get new CSRF token)
-   */
   refreshSession(): Observable<SessionResponse> {
     this.isInitialized = false;
     this.csrfTokenSubject.next(null);
@@ -143,9 +120,6 @@ export class BackendService {
     );
   }
 
-  /**
-   * Send Telegram auth data to the backend with CSRF token
-   */
   verifyAuth(user: TelegramUser): Observable<AuthResponse> {
     return this.ensureSessionInitialized().pipe(
       switchMap(() => {
@@ -178,20 +152,18 @@ export class BackendService {
         return this.http.post<AuthResponse>(url, payload, { headers })
           .pipe(
             timeout(10000),
-            map((response) => {
+            map((response: AuthResponse) => {
               console.log('Auth response:', response);
               return {
-                success: true,
-                ...response
+                ...response,
+                success: response.success !== undefined ? response.success : true
               };
             }),
             catchError((error) => {
-              // If CSRF token is invalid, refresh and retry
               if (error.status === 403 || error.status === 401) {
-                console.warn('CSRF token may be invalid, refreshing...');
+                console.warn('CSRF токен может быть не валиден, пробуем еще');
                 return this.refreshSession().pipe(
                   switchMap(() => {
-                    // Retry with new token
                     const newCsrfToken = this.csrfTokenSubject.value;
                     const newHeaders = new HttpHeaders({
                       'Content-Type': 'application/json',
@@ -203,10 +175,12 @@ export class BackendService {
                     return this.http.post<AuthResponse>(url, payload, { headers: newHeaders })
                       .pipe(
                         timeout(10000),
-                        map((retryResponse) => ({
-                          success: true,
-                          ...retryResponse
-                        })),
+                        map((retryResponse: AuthResponse) => {
+                          return {
+                            ...retryResponse,
+                            success: retryResponse.success !== undefined ? retryResponse.success : true
+                          };
+                        }),
                         catchError(this.handleError)
                       );
                   })
@@ -219,32 +193,26 @@ export class BackendService {
     );
   }
 
-  /**
-   * Health check for the backend
-   */
   healthCheck(): Observable<{ status: string; message: string; csrfAvailable: boolean }> {
     return this.fetchSession()
       .pipe(
         timeout(5000),
         map((response) => ({
           status: 'online',
-          message: 'Backend is reachable',
+          message: 'Бэкенд доступен',
           csrfAvailable: !!response.csrfToken
         })),
         catchError((error) => {
-          console.warn('Health check failed:', error);
+          console.warn('Health check NOT OK:', error);
           return of({
             status: 'unknown',
-            message: 'Cannot reach backend',
+            message: 'Бэкенд не доступен',
             csrfAvailable: false
           });
         })
       );
   }
 
-  /**
-   * Check if session is initialized
-   */
   isSessionReady(): boolean {
     return this.isInitialized && !!this.csrfTokenSubject.value;
   }
@@ -257,19 +225,19 @@ export class BackendService {
     } else {
       switch (error.status) {
         case 0:
-          errorMessage = 'Network error - CORS or connection issue';
+          errorMessage = 'Network error - CORS / connection';
           break;
         case 403:
-          errorMessage = 'Forbidden - Invalid CSRF token or session expired';
+          errorMessage = 'Forbidden - Invalid CSRF token / session';
           break;
         case 401:
           errorMessage = 'Unauthorized - Session invalid';
           break;
         case 404:
-          errorMessage = 'Endpoint not found (404) - The API path may be incorrect';
+          errorMessage = 'Not found (404)';
           break;
         case 500:
-          errorMessage = 'Internal server error (500) - Backend issue';
+          errorMessage = 'Internal server error (500)';
           break;
         default:
           errorMessage = error.error?.message || `Server error: ${error.status}`;
