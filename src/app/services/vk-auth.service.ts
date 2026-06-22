@@ -15,7 +15,7 @@ export interface VKUser {
 export class VKAuthService {
   private readonly VK_APP_ID = '54647196';
   private readonly VK_API_VERSION = '5.131';
-  private readonly REDIRECT_URI = window.location.origin + '/auth';
+  private readonly REDIRECT_URI = window.location.origin // + '/auth';
 
   private userSubject = new BehaviorSubject<VKUser | null>(null);
   private loadingSubject = new BehaviorSubject<boolean>(false);
