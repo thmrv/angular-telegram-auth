@@ -47,8 +47,8 @@
     <!-- VK Column -->
     <div class="auth-column">
 
-      <button class="auth-btn vk-btn" (click)="openVKPopup()" [disabled]="vkIsLoading">
-        <button *ngIf="!vkIsLoading" [disabled]="!sessionReady">Войти через VK</button>
+      <button class="auth-btn vk-btn" (click)="openVKPopup()" [disabled]="vkIsLoading || !sessionReady">
+        <span *ngIf="!vkIsLoading">Войти через VK</span>
         <span *ngIf="vkIsLoading" class="loading-text">
           <span class="loading-spinner"></span> Загрузка...
         </span>
@@ -75,8 +75,8 @@
     <!-- Yandex Column -->
     <div class="auth-column">
 
-      <button class="auth-btn yandex-btn" (click)="openYandexPopup()" [disabled]="yandexIsLoading">
-        <button *ngIf="!yandexIsLoading" [disabled]="!sessionReady">Войти через Yandex</button>
+      <button class="auth-btn yandex-btn" (click)="openYandexPopup()" [disabled]="yandexIsLoading || !sessionReady">
+        <span *ngIf="!yandexIsLoading">Войти через Yandex</span>
         <span *ngIf="yandexIsLoading" class="loading-text">
           <span class="loading-spinner"></span> Загрузка...
         </span>
