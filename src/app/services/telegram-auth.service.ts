@@ -118,7 +118,10 @@ export class TelegramAuthService {
       localStorage.setItem('telegram_code_verifier', this.codeVerifier);
       localStorage.setItem('telegram_state', this.state);
 
-      // Build the proper OAuth URL
+      // Get the current origin
+      const origin = window.location.origin;
+
+      // Build the proper OAuth URL with origin parameter
       const redirectUri = encodeURIComponent(this.REDIRECT_URI);
       const url = `${this.AUTH_URL}?` +
         `client_id=${this.BOT_ID}` +
@@ -127,7 +130,8 @@ export class TelegramAuthService {
         `&scope=openid%20profile%20phone` +
         `&state=${this.state}` +
         `&code_challenge=${codeChallenge}` +
-        `&code_challenge_method=S256`;
+        `&code_challenge_method=S256` +
+        `&origin=${encodeURIComponent(origin)}`;
 
       console.log('Telegram Auth URL:', url);
 
