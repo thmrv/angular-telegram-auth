@@ -70,7 +70,7 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.telegramSuccess = 'Успешная авторизация через Telegram!';
             this.telegramIsLoading = false;
             setTimeout(() => (this.telegramSuccess = null), 5000);
-            
+
             // Send auth data to backend
             this.sendTelegramAuthToBackend(user);
           }
@@ -104,6 +104,7 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.vkIsAuthenticated = !!user;
           if (user) {
             this.vkSuccess = 'Успешная авторизация через VK!';
+            this.vkIsLoading = false;
             setTimeout(() => (this.vkSuccess = null), 5000);
           }
         });
@@ -136,6 +137,7 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.yandexIsAuthenticated = !!user;
           if (user) {
             this.yandexSuccess = 'Успешная авторизация через Yandex!';
+            this.yandexIsLoading = false;
             setTimeout(() => (this.yandexSuccess = null), 5000);
           }
         });
@@ -201,7 +203,8 @@ export class AuthComponent implements OnInit, OnDestroy {
             username: user.username || '',
             photo_url: user.photo_url || '',
             auth_date: user.auth_date || Math.floor(Date.now() / 1000),
-            hash: user.hash || ''
+            hash: user.hash || '',
+            id_token: user.id_token || ''
           }
         }
       };
@@ -318,7 +321,10 @@ export class AuthComponent implements OnInit, OnDestroy {
       { label: 'Фамилия', value: this.telegramUser.last_name || '-' },
       { label: 'Имя пользователя', value: this.telegramUser.username || '-' },
       { label: 'Фото URL', value: this.telegramUser.photo_url || '-' },
+      { label: 'Телефон', value: this.telegramUser.phone_number || '-' },
       { label: 'Дата авторизации', value: new Date((this.telegramUser.auth_date || 0) * 1000).toLocaleString('ru-RU') },
+      { label: 'ID Token', value: this.telegramUser.id_token ? this.telegramUser.id_token.substring(0, 30) + '...' : '-' },
+      { label: 'Access Token', value: this.telegramUser.access_token ? this.telegramUser.access_token.substring(0, 20) + '...' : '-' },
       { label: 'Хеш', value: this.telegramUser.hash || '-' },
     ];
   }
