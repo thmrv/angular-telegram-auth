@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError, of, BehaviorSubject } from 'rxjs';
 import { catchError, map, timeout, tap, switchMap } from 'rxjs/operators';
-import { TelegramUser } from './auth.service';
+import { TelegramUser } from './telegram-auth.service';
 import { environment } from '../../environments/environment';
 
 export interface SessionResponse {
@@ -41,8 +41,10 @@ export class BackendService {
 
   private getFullUrl(endpoint: string): string {
     if (this.USE_PROXY) {
+      // When using proxy, use relative path (goes through Angular dev server)
       return endpoint;
     }
+    // In production, use full URL to the actual backend
     return `${this.BASE_URL}${endpoint}`;
   }
 
@@ -136,6 +138,9 @@ export class BackendService {
       switchMap(() => {
         const url = this.getFullUrl(this.LOGIN_ENDPOINT);
         const csrfToken = this.csrfTokenSubject.value;
+
+        console.log('Sending to URL:', url);
+        console.log('USE_PROXY:', this.USE_PROXY);
 
         if (!csrfToken) {
           throw new Error('CSRF token not available');
@@ -255,7 +260,7 @@ export class BackendService {
           errorMessage = 'Unauthorized - Session invalid';
           break;
         case 404:
-          errorMessage = 'Endpoint not found (404) - The API path may be incorrect';
+          errorMessage = `Endpoint not found (404) - The API path may be incorrect. URL: ${error.url}`;
           break;
         case 500:
           errorMessage = 'Internal server error (500) - Backend issue';
