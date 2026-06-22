@@ -16,7 +16,7 @@ export interface VKUser {
 })
 export class VKAuthService {
   // IMPORTANT: Replace this with your actual VK App ID from https://vk.com/apps
-  private readonly VK_APP_ID = 'YOUR_VK_APP_ID_HERE';
+  private readonly VK_APP_ID = '54647196';
   private readonly REDIRECT_URI = window.location.origin + '/auth';
   private readonly VK_API_VERSION = '5.199';
 
