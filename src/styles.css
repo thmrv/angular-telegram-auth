@@ -12,28 +12,248 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  pader;
-  margin: 24px 0;
-  margin-bottom: 24px;
-  min-height: 60px;
-  margin-bottom: 0px;
 }
 
-.tg-auth-button {
-  margin-bottom: 0px;
+.container {
+  max-width: 560px;
   width: 100%;
-  max-width: 100%;
+  background: white;
+  border-radius: 16px;
+  padding: 40px 32px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
 }
 
-#telegram-login-widget {
-  width: 100%;
+h1 {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  letter-spacing: -0.01em;
 }
 
-.tg-auth-button {
+.subtitle {
+  color: #64748b;
+  font-size: 14px;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.telegram-widget-container {
+  display: flex;
   justify-content: center;
-  align-items: center;
+  margin: 24px 0;
+  min-height: 60px;
 }
 
-.tg-auth-button {
-  width: 100% !important;
+.user-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 20px;
+  margin-top: 20px;
+}
+
+.user-card h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.user-info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eef2f6;
+  font-size: 14px;
+}
+
+.user-info-row:last-child {
+  border-bottom: none;
+}
+
+.user-info-row .label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.user-info-row .value {
+  color: #0f172a;
+  font-weight: 500;
+  word-break: break-all;
+  text-align: right;
+  max-width: 60%;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.status-badge.authenticated {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-badge.loading {
+  background: #fef9c3;
+  color: #854d0e;
+}
+
+.status-badge.error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.btn {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn:hover {
+  background: #4338ca;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background: transparent;
+  color: #4f46e5;
+  border: 1px solid #4f46e5;
+}
+
+.btn-outline:hover {
+  background: #eef2ff;
+}
+
+.auth-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
+
+.error-message {
+  background: #fee2e2;
+  color: #991b1b;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.success-message {
+  background: #dcfce7;
+  color: #166534;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e2e8f0;
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid #e2e8f0;
+  margin: 24px 0;
+}
+
+.backend-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #64748b;
+  margin-top: 16px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.status-dot.online {
+  background: #22c55e;
+}
+
+.status-dot.offline {
+  background: #ef4444;
+}
+
+.request-details,
+.response-details {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  font-size: 13px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.request-row {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 0;
+  border-bottom: 1px solid #eef2f6;
+}
+
+.request-row:last-child {
+  border-bottom: none;
+}
+
+.request-row .label {
+  font-weight: 500;
+  color: #475569;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 4px;
+}
+
+.request-row .value,
+.response-details .value {
+  color: #0f172a;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: transparent;
+}
+
+.response-details .value {
+  background: #f1f5f9;
+  padding: 12px;
+  border-radius: 6px;
+  max-height: 300px;
+  overflow-y: auto;
 }

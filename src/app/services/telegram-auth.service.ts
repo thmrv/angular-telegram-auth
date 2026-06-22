@@ -33,6 +33,7 @@ export interface TelegramInitOptions {
   request_access?: ('phone' | 'write')[];
   lang?: string;
   nonce?: string;
+  origin?: string;
 }
 
 export type TelegramAuthCallback = (data: TelegramAuthResponse) => void;
@@ -128,10 +129,13 @@ export class TelegramAuthService {
       return;
     }
 
+    const origin = window.location.origin;
+
     const options: TelegramInitOptions = {
       client_id: this.CLIENT_ID,
       request_access: ['phone'],
-      lang: 'ru'
+      lang: 'ru',
+      origin: origin
     };
 
     // Store the callback for later use
