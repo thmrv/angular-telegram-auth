@@ -119,7 +119,7 @@ export class TelegramAuthService {
       `&code_challenge=${codeChallenge}` + 
       `&code_challenge_method=S256` +
       `&origin=${origin}`;*/
-    const url = `oauth.telegram.org/auth?response_type=post_message&client_id=${this.BOT_ID}&redirect_uri=${this.REDIRECT_URI}&scope=openid profile telegram%3Abot_access`;
+    const url = `https://oauth.telegram.org/auth?response_type=post_message&client_id=${this.BOT_ID}&redirect_uri=${this.REDIRECT_URI}&scope=openid profile telegram%3Abot_access`;
     return url;
   }
 
