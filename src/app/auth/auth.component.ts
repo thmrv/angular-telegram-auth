@@ -68,7 +68,11 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.telegramIsAuthenticated = !!user;
           if (user) {
             this.telegramSuccess = 'Успешная авторизация через Telegram!';
+            this.telegramIsLoading = false;
             setTimeout(() => (this.telegramSuccess = null), 5000);
+            
+            // Send auth data to backend
+            this.sendTelegramAuthToBackend(user);
           }
         });
       })
@@ -170,20 +174,9 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.telegramAuthService.startTelegramAuth();
   }
 
-  handleTelegramAuth(user: TelegramUser): void {
+  sendTelegramAuthToBackend(user: TelegramUser): void {
     this.ngZone.run(() => {
-      this.telegramIsLoading = true;
-      this.telegramError = null;
-      this.telegramSuccess = null;
       this.backendResponse = null;
-
-      if (!user.id) {
-        this.telegramError = 'Invalid Telegram user data received. Please try again.';
-        this.telegramIsLoading = false;
-        return;
-      }
-
-      this.telegramAuthService.setUser(user);
 
       const csrfToken = this.backendService.getCsrfToken();
 
@@ -216,7 +209,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       this.sendAuthDataToBackend(user).then(
         (response) => {
           this.ngZone.run(() => {
-            this.telegramIsLoading = false;
             this.backendResponse = response;
             this.telegramSuccess = 'Данные авторизации отправлены в бэкенд!';
             setTimeout(() => (this.telegramSuccess = null), 5000);
@@ -224,7 +216,6 @@ export class AuthComponent implements OnInit, OnDestroy {
         },
         (err) => {
           this.ngZone.run(() => {
-            this.telegramIsLoading = false;
             if (err.response) {
               this.backendResponse = err.response;
               this.telegramSuccess = 'Запрос выполнен (с предупреждением CORS)';
@@ -328,7 +319,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       { label: 'Имя пользователя', value: this.telegramUser.username || '-' },
       { label: 'Фото URL', value: this.telegramUser.photo_url || '-' },
       { label: 'Дата авторизации', value: new Date((this.telegramUser.auth_date || 0) * 1000).toLocaleString('ru-RU') },
-      { label: 'Access Token', value: this.telegramUser.access_token ? this.telegramUser.access_token.substring(0, 20) + '...' : '-' },
       { label: 'Хеш', value: this.telegramUser.hash || '-' },
     ];
   }
