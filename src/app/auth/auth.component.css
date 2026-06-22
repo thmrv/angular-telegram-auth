@@ -382,3 +382,10 @@ h1 {
 .status-dot.offline {
   background: #ef4444;
 }
+
+.btn.btn-outline {
+  float: right;
+  background: transparent;
+  border: none;
+  color: gray;
+}

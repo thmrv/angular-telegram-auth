@@ -1,28 +1,12 @@
 import { Component, OnInit, OnDestroy, NgZone } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AuthService, TelegramUser } from '../services/auth.service';
+import { TelegramAuthService, TelegramUser } from '../services/telegram-auth.service';
 import { VKAuthService, VKUser } from '../services/vk-auth.service';
 import { YandexAuthService, YandexUser } from '../services/yandex-auth.service';
 import { BackendService } from '../services/backend.service';
 import { SafeUrlPipe } from '../pipes/safe-url.pipe';
 import { Subscription } from 'rxjs';
-
-declare global {
-  interface Window {
-    onTelegramAuth: (user: TelegramUser) => void;
-    Telegram: {
-      Login: {
-        auth: (options: {
-          bot_id: string;
-          request_access?: string;
-          lang?: string;
-          onAuth: (user: TelegramUser) => void;
-        }) => void;
-      };
-    };
-  }
-}
 
 @Component({
   selector: 'app-auth',
@@ -61,21 +45,16 @@ export class AuthComponent implements OnInit, OnDestroy {
   csrfToken: string | null = null;
   sessionId: string | null = null;
   sessionReady = false;
-  botId: string = '';
 
   private subscriptions: Subscription[] = [];
-  private telegramPopup: Window | null = null;
-  private yandexPopup: Window | null = null;
 
   constructor(
-    public telegramAuthService: AuthService,
+    public telegramAuthService: TelegramAuthService,
     public vkAuthService: VKAuthService,
     public yandexAuthService: YandexAuthService,
     private backendService: BackendService,
     private ngZone: NgZone
-  ) {
-    this.botId = this.telegramAuthService.getBotId();
-  }
+  ) {}
 
   ngOnInit(): void {
     this.checkBackendHealth();
@@ -176,113 +155,19 @@ export class AuthComponent implements OnInit, OnDestroy {
         });
       })
     );
-
-    // Listen for messages from popups
-    window.addEventListener('message', this.handlePopupMessage.bind(this));
   }
 
   ngOnDestroy(): void {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
-    window.removeEventListener('message', this.handlePopupMessage.bind(this));
-    if (this.telegramPopup) this.telegramPopup.close();
-    if (this.yandexPopup) this.yandexPopup.close();
-  }
-
-  // ==================== POPUP MESSAGE HANDLER ====================
-
-  handlePopupMessage(event: MessageEvent): void {
-    // Telegram messages
-    if (event.origin === 'https://oauth.telegram.org') {
-      try {
-        const data = JSON.parse(event.data);
-        if (data && data.id && data.auth_date && data.hash) {
-          this.ngZone.run(() => {
-            const user: TelegramUser = {
-              id: data.id,
-              first_name: data.first_name || '',
-              last_name: data.last_name || '',
-              username: data.username || '',
-              photo_url: data.photo_url || '',
-              auth_date: data.auth_date,
-              hash: data.hash
-            };
-            this.handleTelegramAuth(user);
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to parse Telegram message:', e);
-      }
-      return;
-    }
-
-    // Yandex messages (from our callback HTML)
-    if (event.origin === window.location.origin) {
-      try {
-        const data = event.data;
-        if (data && data.type === 'yandex' && data.payload) {
-          this.ngZone.run(() => {
-            const payload = data.payload;
-            const user: YandexUser = {
-              id: payload.id,
-              first_name: payload.first_name || '',
-              last_name: payload.last_name || '',
-              display_name: payload.display_name || '',
-              avatar_url: payload.avatar_url || '',
-              email: payload.email || '',
-              hash: payload.hash || ''
-            };
-            this.handleYandexAuth(user);
-          });
-        } else if (data && data.error) {
-          this.ngZone.run(() => {
-            this.yandexError = data.error || 'Ошибка авторизации Yandex';
-            this.yandexIsLoading = false;
-          });
-        }
-      } catch (e) {
-        console.warn('Failed to parse Yandex message:', e);
-      }
-      return;
-    }
   }
 
   // ==================== TELEGRAM AUTH ====================
 
   openTelegramPopup(): void {
-    const redirectUrl = window.location.origin;
-    const botId = this.botId;
-    
-    const url = `https://oauth.telegram.org/embed/${botId}?size=large&origin=${encodeURIComponent(redirectUrl)}&request_access=write&return_to=${encodeURIComponent(redirectUrl)}`;
-    const width = 600;
-    const height = 500;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-
-    this.telegramPopup = window.open(
-      url,
-      'TelegramLogin',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    );
-
-    if (!this.telegramPopup) {
-      this.telegramError = 'Popup blocked. Please allow popups for this site.';
-      return;
-    }
-
-    window.onTelegramAuth = (user: TelegramUser) => {
-      this.ngZone.run(() => this.handleTelegramAuth(user));
-    };
-
-    const checkPopup = setInterval(() => {
-      if (this.telegramPopup && this.telegramPopup.closed) {
-        clearInterval(checkPopup);
-        if (!this.telegramIsAuthenticated) {
-          this.telegramError = 'Authorization cancelled or timed out.';
-          this.telegramIsLoading = false;
-        }
-        window.onTelegramAuth = () => {};
-      }
-    }, 500);
+    this.telegramIsLoading = true;
+    this.telegramError = null;
+    this.telegramSuccess = null;
+    this.telegramAuthService.startTelegramAuth();
   }
 
   handleTelegramAuth(user: TelegramUser): void {
@@ -292,7 +177,7 @@ export class AuthComponent implements OnInit, OnDestroy {
       this.telegramSuccess = null;
       this.backendResponse = null;
 
-      if (!user.id || !user.auth_date || !user.hash) {
+      if (!user.id) {
         this.telegramError = 'Invalid Telegram user data received. Please try again.';
         this.telegramIsLoading = false;
         return;
@@ -322,7 +207,7 @@ export class AuthComponent implements OnInit, OnDestroy {
             last_name: user.last_name || '',
             username: user.username || '',
             photo_url: user.photo_url || '',
-            auth_date: user.auth_date,
+            auth_date: user.auth_date || Math.floor(Date.now() / 1000),
             hash: user.hash || ''
           }
         }
@@ -359,59 +244,16 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.vkIsLoading = true;
     this.vkError = null;
     this.vkSuccess = null;
-    
-    // Use the new VK auth flow with PKCE
     this.vkAuthService.startVKAuth();
   }
 
   // ==================== YANDEX AUTH ====================
 
   openYandexPopup(): void {
-    const url = this.yandexAuthService.getYandexAuthUrl();
-    const width = 600;
-    const height = 500;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-
-    this.yandexPopup = window.open(
-      url,
-      'YandexAuth',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    );
-
-    if (!this.yandexPopup) {
-      this.yandexError = 'Popup blocked. Please allow popups for this site.';
-      return;
-    }
-
-    const checkPopup = setInterval(() => {
-      if (this.yandexPopup && this.yandexPopup.closed) {
-        clearInterval(checkPopup);
-        if (!this.yandexIsAuthenticated) {
-          this.yandexError = 'Authorization cancelled or timed out.';
-          this.yandexIsLoading = false;
-        }
-      }
-    }, 500);
-  }
-
-  handleYandexAuth(user: YandexUser): void {
-    this.ngZone.run(() => {
-      this.yandexIsLoading = true;
-      this.yandexError = null;
-      this.yandexSuccess = null;
-
-      if (!user.id) {
-        this.yandexError = 'Invalid Yandex user data received. Please try again.';
-        this.yandexIsLoading = false;
-        return;
-      }
-
-      this.yandexAuthService.setUser(user);
-      this.yandexIsLoading = false;
-      this.yandexSuccess = `Авторизация через Yandex выполнена! Привет, ${user.first_name}!`;
-      setTimeout(() => (this.yandexSuccess = null), 5000);
-    });
+    this.yandexIsLoading = true;
+    this.yandexError = null;
+    this.yandexSuccess = null;
+    this.yandexAuthService.startYandexAuth();
   }
 
   // ==================== SHARED METHODS ====================
@@ -485,7 +327,8 @@ export class AuthComponent implements OnInit, OnDestroy {
       { label: 'Фамилия', value: this.telegramUser.last_name || '-' },
       { label: 'Имя пользователя', value: this.telegramUser.username || '-' },
       { label: 'Фото URL', value: this.telegramUser.photo_url || '-' },
-      { label: 'Дата авторизации', value: new Date(this.telegramUser.auth_date * 1000).toLocaleString('ru-RU') },
+      { label: 'Дата авторизации', value: new Date((this.telegramUser.auth_date || 0) * 1000).toLocaleString('ru-RU') },
+      { label: 'Access Token', value: this.telegramUser.access_token ? this.telegramUser.access_token.substring(0, 20) + '...' : '-' },
       { label: 'Хеш', value: this.telegramUser.hash || '-' },
     ];
   }
