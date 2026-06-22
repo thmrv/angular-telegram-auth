@@ -57,12 +57,12 @@ export class TelegramAuthService {
   /**
    * Start Telegram OAuth flow - using the embed widget approach which is more reliable
    */
-  startTelegramAuth(): void {
+  async startTelegramAuth(): Promise<void> {
     this.setLoading(true);
     this.setError(null);
 
     // Use the embed widget approach which is more reliable
-    const url = this.getEmbedWidgetUrl();
+    const url = await this.getEmbedWidgetUrl();
     console.log('Telegram Auth URL:', url);
 
     const width = 600;
@@ -104,11 +104,11 @@ export class TelegramAuthService {
   /**
    * Get the embed widget URL - this is the most reliable method
    */
-  private getEmbedWidgetUrl(): string {
+  private async getEmbedWidgetUrl(): Promise<any> {
     const origin = window.location.origin;
     const state = this.generateState();
     const codeVerifier = this.generateCodeVerifier();
-    const codeChallenge = this.generateCodeChallenge(codeVerifier);
+    const codeChallenge = await this.generateCodeChallenge(codeVerifier);
     //return `https://oauth.telegram.org/embed/${this.BOT_ID}?size=large&origin=${encodeURIComponent(origin)}&request_access=write&return_to=${encodeURIComponent(origin)}`;
     const url = `${this.AUTH_URI}?` +
       `client_id=${this.BOT_ID}` +
