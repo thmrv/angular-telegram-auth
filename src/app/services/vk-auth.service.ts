@@ -13,9 +13,8 @@ export interface VKUser {
   providedIn: 'root',
 })
 export class VKAuthService {
+  // IMPORTANT: Replace this with your actual VK App ID from https://vk.com/apps
   private readonly VK_APP_ID = '54647196';
-  private readonly VK_API_VERSION = '5.131';
-  private readonly REDIRECT_URI = window.location.origin // + '/auth';
 
   private userSubject = new BehaviorSubject<VKUser | null>(null);
   private loadingSubject = new BehaviorSubject<boolean>(false);
@@ -38,28 +37,6 @@ export class VKAuthService {
       } catch (e) {
         localStorage.removeItem('vk_user');
       }
-    }
-
-    // Check for VK auth callback
-    this.checkVKCallback();
-  }
-
-  checkVKCallback(): void {
-    const urlParams = new URLSearchParams(window.location.search);
-    const hash = urlParams.get('hash');
-    const userId = urlParams.get('user_id');
-
-    if (hash && userId) {
-      const user: VKUser = {
-        id: parseInt(userId, 10),
-        first_name: urlParams.get('first_name') || '',
-        last_name: urlParams.get('last_name') || '',
-        photo: urlParams.get('photo') || '',
-        hash: hash
-      };
-      this.setUser(user);
-      // Clean URL
-      window.history.replaceState({}, document.title, window.location.pathname);
     }
   }
 
@@ -89,11 +66,6 @@ export class VKAuthService {
 
   getVKAppId(): string {
     return this.VK_APP_ID;
-  }
-
-  getVKAuthUrl(): string {
-    const redirectUri = encodeURIComponent(this.REDIRECT_URI);
-    return `https://oauth.vk.com/authorize?client_id=${this.VK_APP_ID}&display=popup&redirect_uri=${redirectUri}&scope=email&response_type=token&v=${this.VK_API_VERSION}&state=123456`;
   }
 
   isAuthenticated(): boolean {
