@@ -1,6 +1,6 @@
 <div class="container">
-  <h1>Telegram Авторизация</h1>
-  <p class="subtitle">Войдите с помощью аккаунта Telegram</p>
+  <h1>Telegram, VK & Yandex Авторизация</h1>
+  <p class="subtitle">Войдите с помощью аккаунта Telegram, VK или Yandex</p>
 
   <div class="backend-status">
     <span class="status-dot" [class.online]="backendOnline" [class.offline]="!backendOnline && backendChecked"></span>
@@ -14,87 +14,115 @@
     Сессия: {{ sessionId.substring(0, 20) }}...
   </div>
 
-  <!-- Telegram Login Button - Using iframe approach -->
-  <div class="telegram-widget-container">
-    <div id="telegram-login-widget">
-      <button class="tg-auth-button" data-style="square">Войти с Telegram</button>
-    </div>
-  </div>
+  <!-- Three-column layout for auth buttons -->
+  <div class="auth-providers">
+    <!-- Telegram Column -->
+    <div class="auth-column">
 
-  <div *ngIf="isLoading" class="auth-actions">
-    <span class="status-badge loading">
-      <span class="loading-spinner" style="margin-right: 8px;"></span>
-      Обработка...
-    </span>
-  </div>
+      <button class="auth-btn telegram-btn" (click)="openTelegramPopup()" [disabled]="telegramIsLoading || !sessionReady">
+        <span *ngIf="!telegramIsLoading">Войти через Telegram</span>
+        <span *ngIf="telegramIsLoading" class="loading-text">
+          <span class="loading-spinner"></span> Загрузка...
+        </span>
+      </button>
 
-  <div *ngIf="errorMessage" class="error-message">
-    {{ errorMessage }}
-  </div>
+      <div *ngIf="telegramError" class="error-message">{{ telegramError }}</div>
+      <div *ngIf="telegramSuccess" class="success-message">{{ telegramSuccess }}</div>
 
-  <div *ngIf="successMessage" class="success-message">
-    {{ successMessage }}
-  </div>
-
-  <div *ngIf="!sessionReady && backendOnline" style="margin-top: 12px; padding: 12px; background: #fef9c3; border-radius: 8px; font-size: 13px; color: #854d0e;">
-    Инициализация сессии и получение CSRF токена...
-  </div>
-
-  <!-- Authorization Info Display -->
-  <div *ngIf="isAuthenticated && user" class="auth-info-section">
-    <h3 class="section-title">Информация о пользователе</h3>
-    
-    <div class="user-card">
-      <div class="user-header" *ngIf="user.photo_url">
-        <img [src]="user.photo_url" alt="Profile photo" class="user-avatar">
-      </div>
-      
-      <div class="user-info-grid">
-        <div class="user-info-row" *ngFor="let info of getFormattedUserInfo()">
-          <span class="label">{{ info.label }}</span>
-          <span class="value">{{ info.value }}</span>
+      <!-- Telegram User Info -->
+      <div *ngIf="telegramIsAuthenticated && telegramUser" class="user-card">
+        <div class="user-header" *ngIf="telegramUser.photo_url">
+          <img [src]="telegramUser.photo_url" alt="Profile photo" class="user-avatar">
         </div>
-      </div>
-    </div>
-
-    <!-- Request Details -->
-    <div *ngIf="requestDetails" style="margin-top: 20px;">
-      <hr class="divider" />
-      <h3 class="section-title">Запрос к внешнему бэкенду</h3>
-      <div class="request-details">
-        <div class="request-row" *ngFor="let detail of getRequestDetails()">
-          <span class="label">{{ detail.label }}</span>
-          <pre class="value code">{{ detail.value }}</pre>
+        <div class="user-info-grid">
+          <div class="user-info-row" *ngFor="let info of getFormattedTelegramUserInfo()">
+            <span class="label">{{ info.label }}</span>
+            <span class="value">{{ info.value }}</span>
+          </div>
         </div>
+        <button class="btn btn-outline logout-btn" (click)="telegramAuthService.logout()">Выйти из Telegram</button>
       </div>
     </div>
 
-    <!-- Backend Response -->
-    <div *ngIf="backendResponse" style="margin-top: 12px;">
-      <hr class="divider" />
-      <h3 class="section-title">Ответ бэкенда</h3>
-      <div class="response-details">
-        <pre class="value code">{{ backendResponse | json }}</pre>
+    <!-- VK Column -->
+    <div class="auth-column">
+
+      <button class="auth-btn vk-btn" (click)="openVKPopup()" [disabled]="vkIsLoading">
+        <span *ngIf="!vkIsLoading">Войти через VK</span>
+        <span *ngIf="vkIsLoading" class="loading-text">
+          <span class="loading-spinner"></span> Загрузка...
+        </span>
+      </button>
+
+      <div *ngIf="vkError" class="error-message">{{ vkError }}</div>
+      <div *ngIf="vkSuccess" class="success-message">{{ vkSuccess }}</div>
+
+      <!-- VK User Info -->
+      <div *ngIf="vkIsAuthenticated && vkUser" class="user-card">
+        <div class="user-header" *ngIf="vkUser.photo">
+          <img [src]="vkUser.photo" alt="Profile photo" class="user-avatar">
+        </div>
+        <div class="user-info-grid">
+          <div class="user-info-row" *ngFor="let info of getFormattedVKUserInfo()">
+            <span class="label">{{ info.label }}</span>
+            <span class="value">{{ info.value }}</span>
+          </div>
+        </div>
+        <button class="btn btn-outline logout-btn" (click)="vkAuthService.logout()">Выйти из VK</button>
       </div>
     </div>
 
-    <!-- Telegram Data (raw) -->
-    <div style="margin-top: 20px;">
-      <hr class="divider" />
-      <h3 class="section-title">Полные данные авторизации</h3>
-      <div class="response-details">
-        <pre class="value code">{{ user | json }}</pre>
-      </div>
-    </div>
+    <!-- Yandex Column -->
+    <div class="auth-column">
 
-    <div class="auth-actions">
-      <button class="btn btn-outline" (click)="logout()">Выйти</button>
-      <button class="btn btn-outline" (click)="refreshSession()">Обновить сессию</button>
-      <button class="btn" (click)="refreshAuth()">Повторная авторизация</button>
+      <button class="auth-btn yandex-btn" (click)="openYandexPopup()" [disabled]="yandexIsLoading">
+        <span *ngIf="!yandexIsLoading">Войти через Yandex</span>
+        <span *ngIf="yandexIsLoading" class="loading-text">
+          <span class="loading-spinner"></span> Загрузка...
+        </span>
+      </button>
+
+      <div *ngIf="yandexError" class="error-message">{{ yandexError }}</div>
+      <div *ngIf="yandexSuccess" class="success-message">{{ yandexSuccess }}</div>
+
+      <!-- Yandex User Info -->
+      <div *ngIf="yandexIsAuthenticated && yandexUser" class="user-card">
+        <div class="user-header" *ngIf="yandexUser.avatar_url">
+          <img [src]="yandexUser.avatar_url" alt="Profile photo" class="user-avatar">
+        </div>
+        <div class="user-info-grid">
+          <div class="user-info-row" *ngFor="let info of getFormattedYandexUserInfo()">
+            <span class="label">{{ info.label }}</span>
+            <span class="value">{{ info.value }}</span>
+          </div>
+        </div>
+        <button class="btn btn-outline logout-btn" (click)="yandexAuthService.logout()">Выйти из Yandex</button>
+      </div>
     </div>
   </div>
 
-  <div *ngIf="!isAuthenticated" style="margin-top: 16px; text-align: center; color: #94a3b8; font-size: 13px;">
-    Нажмите кнопку Telegram выше для входа
+  <!-- Request Details (shared) -->
+  <div *ngIf="requestDetails" style="margin-top: 20px;">
+    <hr class="divider" />
+    <h3 class="section-title">Запрос к внешнему бэкенду</h3>
+    <div class="request-details">
+      <div class="request-row" *ngFor="let detail of getRequestDetails()">
+        <span class="label">{{ detail.label }}</span>
+        <pre class="value code">{{ detail.value }}</pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- Backend Response (shared) -->
+  <div *ngIf="backendResponse" style="margin-top: 12px;">
+    <hr class="divider" />
+    <h3 class="section-title">Ответ бэкенда</h3>
+    <div class="response-details">
+      <pre class="value code">{{ backendResponse | json }}</pre>
+    </div>
+  </div>
+
+  <div class="session-actions">
+    <button class="btn btn-outline" (click)="refreshSession()">Обновить сессию</button>
   </div>
 </div>

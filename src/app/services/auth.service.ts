@@ -15,8 +15,7 @@ export interface TelegramUser {
   providedIn: 'root',
 })
 export class AuthService {
-  // IMPORTANT: Replace this with your actual bot ID from @BotFather
-  private readonly BOT_ID = 'YOUR_BOT_ID_HERE';
+  private readonly BOT_ID = '8728240009';
 
   private userSubject = new BehaviorSubject<TelegramUser | null>(null);
   private loadingSubject = new BehaviorSubject<boolean>(false);

@@ -41,10 +41,8 @@ export class BackendService {
 
   private getFullUrl(endpoint: string): string {
     if (this.USE_PROXY) {
-      // When using proxy, just use the endpoint path
       return endpoint;
     }
-    // In production, use full URL
     return `${this.BASE_URL}${endpoint}`;
   }
 

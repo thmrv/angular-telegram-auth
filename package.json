@@ -1,5 +1,5 @@
 {
-  "name": "luckstack-telegram-auth-test",
+  "name": "angular-telegram-auth",
   "version": "1.0.0",
   "scripts": {
     "ng": "ng",
