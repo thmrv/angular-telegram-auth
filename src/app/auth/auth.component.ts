@@ -21,17 +21,6 @@ declare global {
         }) => void;
       };
     };
-    VK: {
-      init: (params: { apiId: number }) => void;
-      Auth: {
-        login: (callback: (response: any) => void, scope?: number) => void;
-        revokeGrants: (callback: (response: any) => void) => void;
-        getLoginStatus: (callback: (response: any) => void) => void;
-      };
-      Api: {
-        call: (method: string, params: any, callback: (response: any) => void) => void;
-      };
-    };
   }
 }
 
@@ -76,7 +65,6 @@ export class AuthComponent implements OnInit, OnDestroy {
 
   private subscriptions: Subscription[] = [];
   private telegramPopup: Window | null = null;
-  private vkPopup: Window | null = null;
   private yandexPopup: Window | null = null;
 
   constructor(
@@ -197,7 +185,6 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.subscriptions.forEach((sub) => sub.unsubscribe());
     window.removeEventListener('message', this.handlePopupMessage.bind(this));
     if (this.telegramPopup) this.telegramPopup.close();
-    if (this.vkPopup) this.vkPopup.close();
     if (this.yandexPopup) this.yandexPopup.close();
   }
 
@@ -265,7 +252,6 @@ export class AuthComponent implements OnInit, OnDestroy {
     const redirectUrl = window.location.origin;
     const botId = this.botId;
     
-    // Build the proper Telegram OAuth URL
     const url = `https://oauth.telegram.org/embed/${botId}?size=large&origin=${encodeURIComponent(redirectUrl)}&request_access=write&return_to=${encodeURIComponent(redirectUrl)}`;
     const width = 600;
     const height = 500;
@@ -283,7 +269,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       return;
     }
 
-    // Set up the callback function that Telegram will call
     window.onTelegramAuth = (user: TelegramUser) => {
       this.ngZone.run(() => this.handleTelegramAuth(user));
     };
@@ -295,7 +280,6 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.telegramError = 'Authorization cancelled or timed out.';
           this.telegramIsLoading = false;
         }
-        // Clean up
         window.onTelegramAuth = () => {};
       }
     }, 500);
@@ -308,7 +292,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       this.telegramSuccess = null;
       this.backendResponse = null;
 
-      // Validate user data
       if (!user.id || !user.auth_date || !user.hash) {
         this.telegramError = 'Invalid Telegram user data received. Please try again.';
         this.telegramIsLoading = false;
@@ -373,102 +356,12 @@ export class AuthComponent implements OnInit, OnDestroy {
   // ==================== VK AUTH ====================
 
   openVKPopup(): void {
-    const appId = this.vkAuthService.getVKAppId();
-    const redirectUri = encodeURIComponent(window.location.origin + '/auth');
-    const state = Math.random().toString(36).substring(2, 15);
+    this.vkIsLoading = true;
+    this.vkError = null;
+    this.vkSuccess = null;
     
-    // Store state for validation
-    localStorage.setItem('vk_auth_state', state);
-    
-    // VK OAuth URL with proper parameters
-    const url = `https://oauth.vk.com/authorize?client_id=${appId}&display=popup&redirect_uri=${redirectUri}&scope=email,offline&response_type=token&v=5.131&state=${state}`;
-    
-    const width = 600;
-    const height = 500;
-    const left = (window.screen.width - width) / 2;
-    const top = (window.screen.height - height) / 2;
-
-    this.vkPopup = window.open(
-      url,
-      'VKAuth',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    );
-
-    if (!this.vkPopup) {
-      this.vkError = 'Popup blocked. Please allow popups for this site.';
-      return;
-    }
-
-    // Listen for VK callback via message
-    const vkMessageListener = (event: MessageEvent) => {
-      // VK sends messages from their domain
-      if (event.origin === 'https://oauth.vk.com' || event.origin === 'https://vk.com') {
-        try {
-          const data = JSON.parse(event.data);
-          if (data && data.type === 'auth' && data.payload) {
-            const payload = data.payload;
-            if (payload.user_id) {
-              const stateFromPopup = payload.state || '';
-              const savedState = localStorage.getItem('vk_auth_state');
-              
-              // Validate state to prevent CSRF
-              if (stateFromPopup !== savedState) {
-                this.vkError = 'Security validation failed. Please try again.';
-                return;
-              }
-              
-              this.ngZone.run(() => {
-                const user: VKUser = {
-                  id: parseInt(payload.user_id, 10),
-                  first_name: payload.first_name || '',
-                  last_name: payload.last_name || '',
-                  photo: payload.photo || '',
-                  hash: payload.hash || ''
-                };
-                this.handleVKAuth(user);
-                localStorage.removeItem('vk_auth_state');
-              });
-            }
-          }
-        } catch (e) {
-          console.warn('Failed to parse VK message:', e);
-        }
-      }
-    };
-
-    window.addEventListener('message', vkMessageListener);
-
-    const checkPopup = setInterval(() => {
-      if (this.vkPopup && this.vkPopup.closed) {
-        clearInterval(checkPopup);
-        window.removeEventListener('message', vkMessageListener);
-        if (!this.vkIsAuthenticated) {
-          this.vkError = 'Authorization cancelled or timed out.';
-          this.vkIsLoading = false;
-        }
-        localStorage.removeItem('vk_auth_state');
-      }
-    }, 500);
-  }
-
-  handleVKAuth(user: VKUser): void {
-    this.ngZone.run(() => {
-      this.vkIsLoading = true;
-      this.vkError = null;
-      this.vkSuccess = null;
-
-      // Validate user data
-      if (!user.id) {
-        this.vkError = 'Invalid VK user data received. Please try again.';
-        this.vkIsLoading = false;
-        return;
-      }
-
-      this.vkAuthService.setUser(user);
-      this.vkIsLoading = false;
-      this.vkSuccess = `Авторизация через VK выполнена! Привет, ${user.first_name}!`;
-      setTimeout(() => (this.vkSuccess = null), 5000);
-    });
+    // Use the new VK auth flow with PKCE
+    this.vkAuthService.startVKAuth();
   }
 
   // ==================== YANDEX AUTH ====================
@@ -604,6 +497,7 @@ export class AuthComponent implements OnInit, OnDestroy {
       { label: 'Имя', value: this.vkUser.first_name },
       { label: 'Фамилия', value: this.vkUser.last_name || '-' },
       { label: 'Фото URL', value: this.vkUser.photo || '-' },
+      { label: 'Access Token', value: this.vkUser.access_token ? this.vkUser.access_token.substring(0, 20) + '...' : '-' },
       { label: 'Хеш', value: this.vkUser.hash || '-' },
     ];
   }
