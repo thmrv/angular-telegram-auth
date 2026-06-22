@@ -50,7 +50,7 @@ export interface TelegramAuthResponse {
 export class TelegramAuthService {
   // IMPORTANT: Replace these with your actual bot credentials from @BotFather
   private readonly CLIENT_ID = 8728240009; // Your bot's Client ID
-  private readonly CLIENT_SECRET = 'YOUR_CLIENT_SECRET'; // Your bot's Client Secret
+  private readonly CLIENT_SECRET = 'AAFXKTKRZHml7cRPkE4Hw_h8gM4Ui7R1-7g'; // Your bot's Client Secret
 
   private userSubject = new BehaviorSubject<TelegramUser | null>(null);
   private loadingSubject = new BehaviorSubject<boolean>(false);
