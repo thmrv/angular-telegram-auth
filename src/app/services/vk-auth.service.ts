@@ -17,7 +17,7 @@ export interface VKUser {
 export class VKAuthService {
   // IMPORTANT: Replace this with your actual VK App ID from https://vk.com/apps
   private readonly VK_APP_ID = '54647196';
-  private readonly REDIRECT_URI = window.location.origin;
+  private readonly REDIRECT_URI = window.location.origin + '/auth';
   private readonly VK_API_VERSION = '5.199';
 
   private userSubject = new BehaviorSubject<VKUser | null>(null);
@@ -62,7 +62,7 @@ export class VKAuthService {
    */
   private generateCodeVerifier(): string {
     const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    const length = 64; // Recommended length
+    const length = 64;
     let result = '';
     const randomValues = new Uint8Array(length);
     crypto.getRandomValues(randomValues);
@@ -100,7 +100,7 @@ export class VKAuthService {
   }
 
   /**
-   * Start VK OAuth flow with PKCE
+   * Start VK OAuth flow with PKCE using popup
    */
   async startVKAuth(): Promise<void> {
     try {
@@ -111,7 +111,7 @@ export class VKAuthService {
       this.codeVerifier = this.generateCodeVerifier();
       const codeChallenge = await this.generateCodeChallenge(this.codeVerifier);
       this.state = this.generateState();
-      
+
       // Store state for validation
       localStorage.setItem('vk_auth_state', this.state);
       localStorage.setItem('vk_code_verifier', this.codeVerifier);
@@ -150,18 +150,15 @@ export class VKAuthService {
 
       // Listen for VK callback via postMessage
       const vkMessageListener = (event: MessageEvent) => {
-        // VK sends messages from their domain
         if (event.origin === 'https://id.vk.com' || 
             event.origin === 'https://oauth.vk.com' || 
             event.origin === 'https://vk.com') {
           try {
             const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
             
-            // Handle VK ID SDK callback
             if (data && data.type === 'auth' && data.payload) {
               const payload = data.payload;
               
-              // Validate state
               const savedState = localStorage.getItem('vk_auth_state');
               if (payload.state !== savedState) {
                 this.setError('Security validation failed. Invalid state parameter.');
@@ -169,7 +166,6 @@ export class VKAuthService {
                 return;
               }
 
-              // Check for authorization code
               if (payload.code) {
                 this.deviceId = payload.device_id || null;
                 this.exchangeCodeForToken(payload.code, payload.device_id);
@@ -220,7 +216,6 @@ export class VKAuthService {
         return;
       }
 
-      // Build the token exchange request
       const params = new URLSearchParams({
         client_id: this.VK_APP_ID,
         grant_type: 'authorization_code',
@@ -249,13 +244,9 @@ export class VKAuthService {
       console.log('VK token response:', data);
 
       if (data.access_token) {
-        // Store tokens
         this.accessTokenSubject.next(data.access_token);
-        
-        // Fetch user info
         await this.fetchVKUserInfo(data.access_token);
         
-        // Store refresh token if provided
         if (data.refresh_token) {
           const currentUser = this.userSubject.value;
           if (currentUser) {
@@ -263,6 +254,11 @@ export class VKAuthService {
             localStorage.setItem('vk_user', JSON.stringify(currentUser));
           }
         }
+        
+        // Clean up
+        localStorage.removeItem('vk_auth_state');
+        localStorage.removeItem('vk_code_verifier');
+        this.setLoading(false);
       } else {
         throw new Error(data.error_description || 'Failed to get access token');
       }
@@ -274,39 +270,63 @@ export class VKAuthService {
   }
 
   /**
-   * Fetch VK user info using access token
+   * Fetch VK user info using access token - using JSONP approach to avoid CORS
    */
   private async fetchVKUserInfo(accessToken: string): Promise<void> {
     try {
-      const response = await fetch(
-        `https://api.vk.com/method/users.get?access_token=${accessToken}&v=${this.VK_API_VERSION}&fields=photo_200`
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch user info: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // Use VK API with callback parameter for JSONP to avoid CORS
+      const callbackName = 'vk_callback_' + Date.now();
       
-      if (data.error) {
-        throw new Error(data.error.error_msg || 'VK API error');
-      }
+      return new Promise((resolve, reject) => {
+        // Create script element for JSONP
+        const script = document.createElement('script');
+        const url = `https://api.vk.com/method/users.get?` +
+          `access_token=${accessToken}` +
+          `&v=${this.VK_API_VERSION}` +
+          `&fields=photo_200,photo_max_orig` +
+          `&callback=${callbackName}`;
 
-      const userData = data.response[0];
-      if (userData) {
-        const user: VKUser = {
-          id: userData.id,
-          first_name: userData.first_name || '',
-          last_name: userData.last_name || '',
-          photo: userData.photo_200 || '',
-          hash: accessToken.substring(0, 10),
-          access_token: accessToken
+        // Define callback function
+        (window as any)[callbackName] = (data: any) => {
+          // Clean up
+          delete (window as any)[callbackName];
+          document.head.removeChild(script);
+
+          if (data.error) {
+            reject(new Error(data.error.error_msg || 'VK API error'));
+            return;
+          }
+
+          const userData = data.response ? data.response[0] : null;
+          if (userData) {
+            const user: VKUser = {
+              id: userData.id,
+              first_name: userData.first_name || '',
+              last_name: userData.last_name || '',
+              photo: userData.photo_200 || userData.photo_max_orig || '',
+              hash: accessToken.substring(0, 10),
+              access_token: accessToken
+            };
+            
+            this.setUser(user);
+            this.setLoading(false);
+            this.setError(null);
+            resolve();
+          } else {
+            reject(new Error('No user data received'));
+          }
         };
-        
-        this.setUser(user);
-        this.setLoading(false);
-        this.setError(null);
-      }
+
+        // Handle script errors
+        script.onerror = () => {
+          delete (window as any)[callbackName];
+          document.head.removeChild(script);
+          reject(new Error('Failed to fetch user data (network error)'));
+        };
+
+        script.src = url;
+        document.head.appendChild(script);
+      });
     } catch (error: any) {
       console.error('Fetch user info error:', error);
       this.setError(error.message || 'Failed to fetch user information');
@@ -324,10 +344,8 @@ export class VKAuthService {
     const deviceId = urlParams.get('device_id');
 
     if (code && state) {
-      // Clean URL
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      // Validate state
       const savedState = localStorage.getItem('vk_auth_state');
       if (state === savedState) {
         this.exchangeCodeForToken(code, deviceId);
