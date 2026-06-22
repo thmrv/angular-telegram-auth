@@ -110,7 +110,7 @@ export class TelegramAuthService {
     const codeVerifier = this.generateCodeVerifier();
     const codeChallenge = await this.generateCodeChallenge(codeVerifier);
     //return `https://oauth.telegram.org/embed/${this.BOT_ID}?size=large&origin=${encodeURIComponent(origin)}&request_access=write&return_to=${encodeURIComponent(origin)}`;
-    const url = `${this.AUTH_URI}?` +
+    /*const url = `${this.AUTH_URI}?` +
       `client_id=${this.BOT_ID}` +
       `&redirect_uri=${this.REDIRECT_URI}` +
       `&response_type=code` +
@@ -118,8 +118,9 @@ export class TelegramAuthService {
       `&state=${state}` +
       `&code_challenge=${codeChallenge}` + 
       `&code_challenge_method=S256` +
-      `&origin=${origin}`;
-      return url;
+      `&origin=${origin}`;*/
+    const url = `oauth.telegram.org/auth?response_type=post_message&client_id=${this.BOT_ID}&redirect_uri=${this.REDIRECT_URI}&scope=openid profile telegram%3Abot_access`;
+    return url;
   }
 
   private generateState(): string {
