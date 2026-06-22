@@ -49,7 +49,7 @@ export interface TelegramAuthResponse {
 export class TelegramAuthService {
   // IMPORTANT: Replace these with your actual bot credentials from @BotFather
   private readonly CLIENT_ID = 8728240009; // Your bot's Client ID
-  private readonly CLIENT_SECRET = 'AAFXKTKRZHml7cRPkE4Hw_h8gM4Ui7R1-7g'; // Your bot's Client Secret
+  private readonly CLIENT_SECRET = 'YOUR_CLIENT_SECRET'; // Your bot's Client Secret
 
   private userSubject = new BehaviorSubject<TelegramUser | null>(null);
   private loadingSubject = new BehaviorSubject<boolean>(false);
@@ -64,8 +64,8 @@ export class TelegramAuthService {
   idToken$: Observable<string | null> = this.idTokenSubject.asObservable();
 
   private isInitialized = false;
-  private authPopup: Window | null = null;
-  private authCallback: TelegramAuthCallback | null = null;
+  private initCallback: TelegramAuthCallback | null = null;
+  private pendingAuthCallback: TelegramAuthCallback | null = null;
 
   constructor(private ngZone: NgZone) {
     const savedUser = localStorage.getItem('telegram_user');
@@ -96,12 +96,21 @@ export class TelegramAuthService {
    * Load the Telegram Login library dynamically
    */
   private loadTelegramLibrary(): void {
+    // Check if already loaded
+    if (window.Telegram && window.Telegram.Login) {
+      this.isInitialized = true;
+      console.log('Telegram Login library already loaded');
+      this.initializeLibrary();
+      return;
+    }
+
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-login.js';
     script.async = true;
     script.onload = () => {
       console.log('Telegram Login library loaded');
       this.isInitialized = true;
+      this.initializeLibrary();
     };
     script.onerror = () => {
       console.error('Failed to load Telegram Login library');
@@ -111,11 +120,11 @@ export class TelegramAuthService {
   }
 
   /**
-   * Initialize Telegram Login with options
+   * Initialize the Telegram Login library
    */
-  private initializeTelegramLogin(callback: TelegramAuthCallback): void {
+  private initializeLibrary(): void {
     if (!window.Telegram || !window.Telegram.Login) {
-      this.setError('Telegram Login library not loaded yet. Please wait.');
+      console.error('Telegram Login library not available');
       return;
     }
 
@@ -125,14 +134,16 @@ export class TelegramAuthService {
       lang: 'ru'
     };
 
-    this.authCallback = callback;
-
-    // Initialize the SDK
-    window.Telegram.Login.init(options, (data: TelegramAuthResponse) => {
+    // Store the callback for later use
+    this.initCallback = (data: TelegramAuthResponse) => {
       this.ngZone.run(() => {
         this.handleAuthResponse(data);
       });
-    });
+    };
+
+    // Initialize the SDK
+    window.Telegram.Login.init(options, this.initCallback);
+    console.log('Telegram Login library initialized with client_id:', this.CLIENT_ID);
   }
 
   /**
@@ -142,10 +153,18 @@ export class TelegramAuthService {
     this.setLoading(true);
     this.setError(null);
 
-    // Check if library is loaded
+    // Check if library is loaded and initialized
     if (!this.isInitialized || !window.Telegram || !window.Telegram.Login) {
-      this.setError('Telegram Login library is still loading. Please try again in a moment.');
-      this.setLoading(false);
+      // Try loading again
+      this.loadTelegramLibrary();
+      setTimeout(() => {
+        if (this.isInitialized) {
+          this.startTelegramAuth();
+        } else {
+          this.setError('Telegram Login library is still loading. Please try again.');
+          this.setLoading(false);
+        }
+      }, 1500);
       return;
     }
 
@@ -155,9 +174,6 @@ export class TelegramAuthService {
         this.handleAuthResponse(data);
       });
     });
-
-    // The popup will be opened by the library
-    // We can't check for closure directly since the library manages it
   }
 
   /**
@@ -177,18 +193,17 @@ export class TelegramAuthService {
       this.idTokenSubject.next(data.id_token);
 
       // Parse ID token to get user data
-      this.parseIdToken(data.id_token);
-      
-      // Exchange ID token for access token if needed
-      if (data.user) {
-        this.processUserData(data.user, data.id_token);
+      const user = this.parseIdToken(data.id_token);
+      if (user) {
+        user.id_token = data.id_token;
+        this.processUserData(user);
       } else {
-        // If user data is not in the callback, fetch it from the ID token
-        this.fetchUserFromIdToken(data.id_token);
+        this.setError('Failed to parse user data from ID token');
+        this.setLoading(false);
       }
     } else if (data.user) {
       // Direct user data from callback
-      this.processUserData(data.user, data.id_token || '');
+      this.processUserData(data.user);
     } else {
       this.setError('Invalid response from Telegram');
       this.setLoading(false);
@@ -200,13 +215,11 @@ export class TelegramAuthService {
    */
   private parseIdToken(idToken: string): TelegramUser | null {
     try {
-      // Split the JWT token
       const parts = idToken.split('.');
       if (parts.length !== 3) {
         throw new Error('Invalid JWT token');
       }
 
-      // Decode the payload (second part)
       const payload = JSON.parse(atob(parts[1]));
       console.log('ID Token payload:', payload);
 
@@ -231,22 +244,9 @@ export class TelegramAuthService {
   }
 
   /**
-   * Fetch user data from ID token
-   */
-  private fetchUserFromIdToken(idToken: string): void {
-    const user = this.parseIdToken(idToken);
-    if (user) {
-      this.processUserData(user, idToken);
-    } else {
-      this.setError('Failed to parse user data from ID token');
-      this.setLoading(false);
-    }
-  }
-
-  /**
    * Process user data and complete authentication
    */
-  private processUserData(user: TelegramUser, idToken: string): void {
+  private processUserData(user: TelegramUser): void {
     console.log('Processing user data:', user);
 
     if (!user.id) {
@@ -255,106 +255,9 @@ export class TelegramAuthService {
       return;
     }
 
-    // Store the ID token
-    user.id_token = idToken;
-    this.idTokenSubject.next(idToken);
-
     this.setUser(user);
     this.setLoading(false);
     this.setError(null);
-
-    // Also try to exchange for access token if we have a code
-    // Note: The library handles this internally, but we can still try
-    this.exchangeCodeForToken(idToken);
-  }
-
-  /**
-   * Exchange ID token for access token (if needed for backend communication)
-   */
-  private async exchangeCodeForToken(idToken: string): Promise<void> {
-    try {
-      // This would typically be done server-side for security
-      // But we can attempt it client-side if needed
-      const response = await fetch('https://oauth.telegram.org/token', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-          grant_type: 'id_token',
-          id_token: idToken,
-          client_id: String(this.CLIENT_ID),
-          client_secret: this.CLIENT_SECRET
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.access_token) {
-          this.accessTokenSubject.next(data.access_token);
-          const currentUser = this.userSubject.value;
-          if (currentUser) {
-            currentUser.access_token = data.access_token;
-            localStorage.setItem('telegram_user', JSON.stringify(currentUser));
-          }
-        }
-      }
-    } catch (error) {
-      console.warn('Token exchange failed (this is normal if using client-side only):', error);
-    }
-  }
-
-  /**
-   * Validate the ID token (should be done server-side in production)
-   */
-  private validateIdToken(idToken: string): boolean {
-    try {
-      const parts = idToken.split('.');
-      if (parts.length !== 3) return false;
-
-      const payload = JSON.parse(atob(parts[1]));
-      
-      // Check issuer
-      if (payload.iss !== 'https://oauth.telegram.org') return false;
-      
-      // Check audience
-      if (payload.aud !== String(this.CLIENT_ID)) return false;
-      
-      // Check expiration
-      if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return false;
-
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Direct authentication method for use with custom UI
-   */
-  authWithOptions(options?: Partial<TelegramInitOptions>, callback?: TelegramAuthCallback): void {
-    if (!window.Telegram || !window.Telegram.Login) {
-      this.setError('Telegram Login library not loaded yet.');
-      return;
-    }
-
-    const fullOptions: TelegramInitOptions = {
-      client_id: this.CLIENT_ID,
-      request_access: ['phone'],
-      lang: 'ru',
-      ...options
-    };
-
-    const authCallback = (data: TelegramAuthResponse) => {
-      this.ngZone.run(() => {
-        this.handleAuthResponse(data);
-        if (callback) {
-          callback(data);
-        }
-      });
-    };
-
-    window.Telegram.Login.auth(fullOptions, authCallback);
   }
 
   setUser(user: TelegramUser): void {

@@ -60,7 +60,7 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.checkBackendHealth();
     this.updateSessionStatus();
 
-    // Telegram subscriptions
+    // Telegram subscriptions using the new library
     this.subscriptions.push(
       this.telegramAuthService.user$.subscribe((user) => {
         this.ngZone.run(() => {
@@ -173,6 +173,7 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.telegramIsLoading = true;
     this.telegramError = null;
     this.telegramSuccess = null;
+    // Using the new Telegram Login library
     this.telegramAuthService.startTelegramAuth();
   }
 
@@ -204,7 +205,8 @@ export class AuthComponent implements OnInit, OnDestroy {
             photo_url: user.photo_url || '',
             auth_date: user.auth_date || Math.floor(Date.now() / 1000),
             hash: user.hash || '',
-            id_token: user.id_token || ''
+            id_token: user.id_token || '',
+            phone_number: user.phone_number || ''
           }
         }
       };
