@@ -2,8 +2,9 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError, of, BehaviorSubject } from 'rxjs';
 import { catchError, map, timeout, tap, switchMap } from 'rxjs/operators';
-import { TelegramUser } from './telegram-auth.service';
 import { environment } from '../../environments/environment';
+
+export type AuthProvider = 'TELEGRAM' | 'VKONTAKTE' | 'YANDEX';
 
 export interface SessionResponse {
   sessionId: string;
@@ -13,6 +14,11 @@ export interface SessionResponse {
     id: string;
     status: string;
   } | null;
+}
+
+export interface AuthLoginRequest {
+  provider: AuthProvider;
+  token: string;
 }
 
 export interface AuthResponse {
@@ -41,10 +47,8 @@ export class BackendService {
 
   private getFullUrl(endpoint: string): string {
     if (this.USE_PROXY) {
-      // When using proxy, use relative path (goes through Angular dev server)
       return endpoint;
     }
-    // In production, use full URL to the actual backend
     return `${this.BASE_URL}${endpoint}`;
   }
 
@@ -133,27 +137,26 @@ export class BackendService {
     );
   }
 
-  verifyAuth(user: TelegramUser): Observable<AuthResponse> {
+  /**
+   * Unified authentication method for all providers
+   * Sends request in the format:
+   * POST /api/auth/login
+   * { "provider": "TELEGRAM|VKONTAKTE|YANDEX", "token": "..." }
+   * with X-CSRF-TOKEN header
+   */
+  authenticate(provider: AuthProvider, token: string): Observable<AuthResponse> {
     return this.ensureSessionInitialized().pipe(
       switchMap(() => {
         const url = this.getFullUrl(this.LOGIN_ENDPOINT);
         const csrfToken = this.csrfTokenSubject.value;
 
-        console.log('Sending to URL:', url);
-        console.log('USE_PROXY:', this.USE_PROXY);
-
         if (!csrfToken) {
           throw new Error('CSRF token not available');
         }
 
-        const payload = {
-          id: user.id,
-          first_name: user.first_name || '',
-          last_name: user.last_name || '',
-          username: user.username || '',
-          photo_url: user.photo_url || '',
-          auth_date: user.auth_date,
-          hash: user.hash || ''
+        const payload: AuthLoginRequest = {
+          provider: provider,
+          token: token
         };
 
         const headers = new HttpHeaders({
@@ -161,8 +164,8 @@ export class BackendService {
           'X-CSRF-TOKEN': csrfToken
         });
 
-        console.log('Sending auth request to:', url);
-        console.log('With CSRF token:', csrfToken);
+        console.log(`Authenticating with ${provider} provider`);
+        console.log('Request URL:', url);
         console.log('Payload:', payload);
 
         return this.http.post<AuthResponse>(url, payload, { headers })
@@ -170,9 +173,11 @@ export class BackendService {
             timeout(10000),
             map((response) => {
               console.log('Auth response:', response);
+              // Create result without spread conflict
               const result: AuthResponse = {
                 success: response.success !== undefined ? response.success : true
               };
+              // Copy other properties
               Object.keys(response).forEach(key => {
                 if (key !== 'success') {
                   result[key] = response[key];
@@ -197,6 +202,7 @@ export class BackendService {
                       .pipe(
                         timeout(10000),
                         map((retryResponse) => {
+                          // Create result without spread conflict
                           const result: AuthResponse = {
                             success: retryResponse.success !== undefined ? retryResponse.success : true
                           };
@@ -217,6 +223,27 @@ export class BackendService {
           );
       })
     );
+  }
+
+  /**
+   * Convenience method for Telegram authentication
+   */
+  authenticateTelegram(idToken: string): Observable<AuthResponse> {
+    return this.authenticate('TELEGRAM', idToken);
+  }
+
+  /**
+   * Convenience method for VK authentication
+   */
+  authenticateVK(accessToken: string): Observable<AuthResponse> {
+    return this.authenticate('VKONTAKTE', accessToken);
+  }
+
+  /**
+   * Convenience method for Yandex authentication
+   */
+  authenticateYandex(token: string): Observable<AuthResponse> {
+    return this.authenticate('YANDEX', token);
   }
 
   healthCheck(): Observable<{ status: string; message: string; csrfAvailable: boolean }> {
@@ -260,7 +287,7 @@ export class BackendService {
           errorMessage = 'Unauthorized - Session invalid';
           break;
         case 404:
-          errorMessage = `Endpoint not found (404) - The API path may be incorrect. URL: ${error.url}`;
+          errorMessage = 'Endpoint not found (404) - The API path may be incorrect';
           break;
         case 500:
           errorMessage = 'Internal server error (500) - Backend issue';

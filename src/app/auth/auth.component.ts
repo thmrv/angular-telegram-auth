@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { TelegramAuthService, TelegramUser } from '../services/telegram-auth.service';
 import { VKAuthService, VKUser } from '../services/vk-auth.service';
 import { YandexAuthService, YandexUser } from '../services/yandex-auth.service';
-import { BackendService } from '../services/backend.service';
+import { BackendService, AuthResponse } from '../services/backend.service';
 import { SafeUrlPipe } from '../pipes/safe-url.pipe';
 import { Subscription } from 'rxjs';
 
@@ -40,7 +40,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   // Shared state
   backendOnline = false;
   backendChecked = false;
-  backendResponse: any = null;
+  backendResponse: AuthResponse | null = null;
   requestDetails: any = null;
   csrfToken: string | null = null;
   sessionId: string | null = null;
@@ -60,7 +60,7 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.checkBackendHealth();
     this.updateSessionStatus();
 
-    // Telegram subscriptions using the new library
+    // Telegram subscriptions
     this.subscriptions.push(
       this.telegramAuthService.user$.subscribe((user) => {
         this.ngZone.run(() => {
@@ -71,8 +71,10 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.telegramIsLoading = false;
             setTimeout(() => (this.telegramSuccess = null), 5000);
 
-            // Send auth data to backend
-            this.sendTelegramAuthToBackend(user);
+            // Send auth data to backend using the new unified format
+            if (user.id_token) {
+              this.sendTelegramAuthToBackend(user.id_token);
+            }
           }
         });
       })
@@ -106,6 +108,11 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.vkSuccess = 'Успешная авторизация через VK!';
             this.vkIsLoading = false;
             setTimeout(() => (this.vkSuccess = null), 5000);
+
+            // Send auth data to backend using the new unified format
+            if (user.access_token) {
+              this.sendVKAuthToBackend(user.access_token);
+            }
           }
         });
       })
@@ -139,6 +146,11 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.yandexSuccess = 'Успешная авторизация через Yandex!';
             this.yandexIsLoading = false;
             setTimeout(() => (this.yandexSuccess = null), 5000);
+
+            // Send auth data to backend using the new unified format
+            if (user.hash) {
+              this.sendYandexAuthToBackend(user.hash);
+            }
           }
         });
       })
@@ -173,64 +185,43 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.telegramIsLoading = true;
     this.telegramError = null;
     this.telegramSuccess = null;
-    // Using the new Telegram Login library
     this.telegramAuthService.startTelegramAuth();
   }
 
-  sendTelegramAuthToBackend(user: TelegramUser): void {
+  sendTelegramAuthToBackend(idToken: string): void {
     this.ngZone.run(() => {
       this.backendResponse = null;
 
       const csrfToken = this.backendService.getCsrfToken();
 
       this.requestDetails = {
-        provider: 'telegram',
-        session: {
-          sessionId: this.backendService.getSessionId(),
-          csrfToken: csrfToken,
-          ready: this.backendService.isSessionReady()
+        provider: 'TELEGRAM',
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
         },
-        request: {
-          url: 'https://luckystack.redpillvps.pro/api/auth/login/telegram',
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
-          },
-          body: {
-            id: user.id,
-            first_name: user.first_name || '',
-            last_name: user.last_name || '',
-            username: user.username || '',
-            photo_url: user.photo_url || '',
-            auth_date: user.auth_date || Math.floor(Date.now() / 1000),
-            hash: user.hash || '',
-            id_token: user.id_token || '',
-            phone_number: user.phone_number || ''
-          }
+        body: {
+          provider: 'TELEGRAM',
+          token: idToken.substring(0, 20) + '...'
         }
       };
 
-      this.sendAuthDataToBackend(user).then(
-        (response) => {
+      this.backendService.authenticateTelegram(idToken).subscribe({
+        next: (response) => {
           this.ngZone.run(() => {
             this.backendResponse = response;
             this.telegramSuccess = 'Данные авторизации отправлены в бэкенд!';
             setTimeout(() => (this.telegramSuccess = null), 5000);
           });
         },
-        (err) => {
+        error: (err) => {
           this.ngZone.run(() => {
-            if (err.response) {
-              this.backendResponse = err.response;
-              this.telegramSuccess = 'Запрос выполнен (с предупреждением CORS)';
-              setTimeout(() => (this.telegramSuccess = null), 5000);
-            } else {
-              this.telegramError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
-            }
+            this.telegramError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
           });
         }
-      );
+      });
     });
   }
 
@@ -243,6 +234,43 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.vkAuthService.startVKAuth();
   }
 
+  sendVKAuthToBackend(accessToken: string): void {
+    this.ngZone.run(() => {
+      this.backendResponse = null;
+
+      const csrfToken = this.backendService.getCsrfToken();
+
+      this.requestDetails = {
+        provider: 'VKONTAKTE',
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
+        },
+        body: {
+          provider: 'VKONTAKTE',
+          token: accessToken.substring(0, 20) + '...'
+        }
+      };
+
+      this.backendService.authenticateVK(accessToken).subscribe({
+        next: (response) => {
+          this.ngZone.run(() => {
+            this.backendResponse = response;
+            this.vkSuccess = 'Данные авторизации отправлены в бэкенд!';
+            setTimeout(() => (this.vkSuccess = null), 5000);
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.vkError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+          });
+        }
+      });
+    });
+  }
+
   // ==================== YANDEX AUTH ====================
 
   openYandexPopup(): void {
@@ -250,6 +278,43 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.yandexError = null;
     this.yandexSuccess = null;
     this.yandexAuthService.startYandexAuth();
+  }
+
+  sendYandexAuthToBackend(token: string): void {
+    this.ngZone.run(() => {
+      this.backendResponse = null;
+
+      const csrfToken = this.backendService.getCsrfToken();
+
+      this.requestDetails = {
+        provider: 'YANDEX',
+        method: 'POST',
+        endpoint: '/api/auth/login',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
+        },
+        body: {
+          provider: 'YANDEX',
+          token: token.substring(0, 20) + '...'
+        }
+      };
+
+      this.backendService.authenticateYandex(token).subscribe({
+        next: (response) => {
+          this.ngZone.run(() => {
+            this.backendResponse = response;
+            this.yandexSuccess = 'Данные авторизации отправлены в бэкенд!';
+            setTimeout(() => (this.yandexSuccess = null), 5000);
+          });
+        },
+        error: (err) => {
+          this.ngZone.run(() => {
+            this.yandexError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+          });
+        }
+      });
+    });
   }
 
   // ==================== SHARED METHODS ====================
@@ -266,19 +331,6 @@ export class AuthComponent implements OnInit, OnDestroy {
         this.sessionReady = this.backendService.isSessionReady();
       });
     }, 5000);
-  }
-
-  async sendAuthDataToBackend(user: TelegramUser): Promise<any> {
-    try {
-      const response = await this.backendService.verifyAuth(user).toPromise();
-      return response;
-    } catch (error: any) {
-      console.error('Backend auth error:', error);
-      if (error.response) {
-        throw error;
-      }
-      throw new Error(error.message || 'Ошибка верификации в бэкенде');
-    }
   }
 
   async checkBackendHealth(): Promise<void> {
@@ -326,7 +378,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       { label: 'Телефон', value: this.telegramUser.phone_number || '-' },
       { label: 'Дата авторизации', value: new Date((this.telegramUser.auth_date || 0) * 1000).toLocaleString('ru-RU') },
       { label: 'ID Token', value: this.telegramUser.id_token ? this.telegramUser.id_token.substring(0, 30) + '...' : '-' },
-      { label: 'Access Token', value: this.telegramUser.access_token ? this.telegramUser.access_token.substring(0, 20) + '...' : '-' },
       { label: 'Хеш', value: this.telegramUser.hash || '-' },
     ];
   }
@@ -360,46 +411,30 @@ export class AuthComponent implements OnInit, OnDestroy {
     if (!this.requestDetails) return [];
     const details = [];
 
-    if (this.requestDetails.provider) {
-      details.push({
-        label: 'Провайдер',
-        value: this.requestDetails.provider
-      });
-    }
+    details.push({
+      label: 'Провайдер',
+      value: this.requestDetails.provider
+    });
 
-    if (this.requestDetails.session) {
-      details.push({
-        label: 'ID сессии',
-        value: this.requestDetails.session.sessionId || 'Недоступно'
-      });
-      details.push({
-        label: 'CSRF токен',
-        value: this.requestDetails.session.csrfToken || 'Недоступно'
-      });
-      details.push({
-        label: 'Сессия готова',
-        value: this.requestDetails.session.ready ? 'Да' : 'Нет'
-      });
-    }
+    details.push({
+      label: 'Метод',
+      value: this.requestDetails.method
+    });
 
-    if (this.requestDetails.request) {
-      details.push({
-        label: 'URL',
-        value: this.requestDetails.request.url
-      });
-      details.push({
-        label: 'Метод',
-        value: this.requestDetails.request.method
-      });
-      details.push({
-        label: 'Заголовки',
-        value: JSON.stringify(this.requestDetails.request.headers, null, 2)
-      });
-      details.push({
-        label: 'Тело запроса',
-        value: JSON.stringify(this.requestDetails.request.body, null, 2)
-      });
-    }
+    details.push({
+      label: 'Endpoint',
+      value: this.requestDetails.endpoint
+    });
+
+    details.push({
+      label: 'Заголовки',
+      value: JSON.stringify(this.requestDetails.headers, null, 2)
+    });
+
+    details.push({
+      label: 'Тело запроса',
+      value: JSON.stringify(this.requestDetails.body, null, 2)
+    });
 
     return details;
   }

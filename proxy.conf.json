@@ -6,9 +6,6 @@
     "pathRewrite": {
       "^/api": "/api"
     },
-    "logLevel": "debug",
-    "headers": {
-      "Origin": "https://luckystack.redpillvps.pro"
-    }
+    "logLevel": "debug"
   }
 }
