@@ -1,7 +1,8 @@
+// environment.prod.ts
 export const environment = {
   production: true,
-  backendUrl: 'https://luckystack.redpillvps.pro',
-  sessionEndpoint: '/api/auth/session',
-  loginEndpoint: '/api/auth/login',
-  useProxy: false  // Disable proxy, use absolute URL
+  backendUrl: '',  // empty
+  sessionEndpoint: '/api/auth/session',   // now a function path
+  loginEndpoint: '/api/auth/login',       // now a function path
+  useProxy: false   // we don't use the angular proxy anymore
 };
