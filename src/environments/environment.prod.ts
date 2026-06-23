@@ -4,5 +4,5 @@ export const environment = {
   backendUrl: '',  // empty
   sessionEndpoint: '/api/auth/session',   // now a function path
   loginEndpoint: '/api/auth/login',       // now a function path
-  useProxy: false   // we don't use the angular proxy anymore
+  useProxy: true   // we don't use the angular proxy anymore
 };
