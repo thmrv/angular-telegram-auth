@@ -1,7 +1,7 @@
 export const environment = {
   production: false,
-  backendUrl: '',
+  backendUrl: 'https://luckystack.redpillvps.pro',  // Full backend URL
   sessionEndpoint: '/api/auth/session',
   loginEndpoint: '/api/auth/login',
-  useProxy: true
+  useProxy: false  // Disable proxy
 };
