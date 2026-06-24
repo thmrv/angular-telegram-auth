@@ -101,6 +101,18 @@
     </div>
   </div>
 
+
+  <!-- Global Logout Button -->
+  <div class="logout-section" *ngIf="telegramIsAuthenticated || vkIsAuthenticated || yandexIsAuthenticated">
+    <button class="btn btn-danger logout-global" (click)="logout()" [disabled]="isLoggingOut">
+      <span *ngIf="!isLoggingOut">Выйти из аккаунта</span>
+      <span *ngIf="isLoggingOut" class="loading-text">
+        <span class="loading-spinner"></span> Выход...
+      </span>
+    </button>
+    <div *ngIf="logoutError" class="error-message">{{ logoutError }}</div>
+  </div>
+
   <!-- Action buttons -->
   <div class="action-buttons">
     <button class="btn btn-outline" (click)="refreshSession()" [disabled]="!backendOnline">

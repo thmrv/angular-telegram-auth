@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { TelegramAuthService, TelegramUser } from '../services/telegram-auth.service';
 import { VKAuthService, VKUser } from '../services/vk-auth.service';
 import { YandexAuthService, YandexUser } from '../services/yandex-auth.service';
-import { BackendService, AuthResponse } from '../services/backend.service';
+import { BackendService, AuthProvider, AuthResponse } from '../services/backend.service';
 import { SafeUrlPipe } from '../pipes/safe-url.pipe';
 import { Subscription } from 'rxjs';
 
@@ -45,6 +45,10 @@ export class AuthComponent implements OnInit, OnDestroy {
   csrfToken: string | null = null;
   sessionId: string | null = null;
   sessionReady = false;
+
+  // Logout state
+  isLoggingOut = false;
+  logoutError: string | null = null;
 
   // Resend button state
   resendAvailable = false;
@@ -196,23 +200,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   sendTelegramAuthToBackend(idToken: string): void {
     this.ngZone.run(() => {
       this.backendResponse = null;
-
-      const csrfToken = this.backendService.getCsrfToken();
-
-      this.requestDetails = {
-        provider: 'TELEGRAM',
-        method: 'POST',
-        endpoint: '/api/auth/login',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
-        },
-        body: {
-          provider: 'TELEGRAM',
-          token: idToken.substring(0, 20) + '...'
-        }
-      };
-
+      this.buildRequestDetails('TELEGRAM', idToken);
       this.backendService.authenticateTelegram(idToken).subscribe({
         next: (response) => {
           this.ngZone.run(() => {
@@ -225,7 +213,7 @@ export class AuthComponent implements OnInit, OnDestroy {
         error: (err) => {
           this.ngZone.run(() => {
             this.telegramError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
-            this.resendAvailable = true; // even if error, we can retry
+            this.resendAvailable = true;
           });
         }
       });
@@ -246,23 +234,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   sendVKAuthToBackend(accessToken: string): void {
     this.ngZone.run(() => {
       this.backendResponse = null;
-
-      const csrfToken = this.backendService.getCsrfToken();
-
-      this.requestDetails = {
-        provider: 'VKONTAKTE',
-        method: 'POST',
-        endpoint: '/api/auth/login',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
-        },
-        body: {
-          provider: 'VKONTAKTE',
-          token: accessToken.substring(0, 20) + '...'
-        }
-      };
-
+      this.buildRequestDetails('VKONTAKTE', accessToken);
       this.backendService.authenticateVK(accessToken).subscribe({
         next: (response) => {
           this.ngZone.run(() => {
@@ -296,23 +268,7 @@ export class AuthComponent implements OnInit, OnDestroy {
   sendYandexAuthToBackend(token: string): void {
     this.ngZone.run(() => {
       this.backendResponse = null;
-
-      const csrfToken = this.backendService.getCsrfToken();
-
-      this.requestDetails = {
-        provider: 'YANDEX',
-        method: 'POST',
-        endpoint: '/api/auth/login',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': csrfToken || 'NOT_AVAILABLE'
-        },
-        body: {
-          provider: 'YANDEX',
-          token: token.substring(0, 20) + '...'
-        }
-      };
-
+      this.buildRequestDetails('YANDEX', token);
       this.backendService.authenticateYandex(token).subscribe({
         next: (response) => {
           this.ngZone.run(() => {
@@ -332,6 +288,76 @@ export class AuthComponent implements OnInit, OnDestroy {
     });
   }
 
+  // ==================== HELPER: Build Request Details ====================
+
+  private buildRequestDetails(provider: AuthProvider, token: string): void {
+    const csrfToken = this.backendService.getCsrfToken();
+    const displayToken = csrfToken ? csrfToken.substring(0, 20) + '...' : 'Загрузка...';
+
+    this.requestDetails = {
+      provider: provider,
+      method: 'POST',
+      endpoint: '/api/auth/login',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': displayToken
+      },
+      body: {
+        provider: provider,
+        token: token.substring(0, 20) + '...'
+      }
+    };
+  }
+
+  // ==================== LOGOUT ====================
+
+  logout(): void {
+    this.isLoggingOut = true;
+    this.logoutError = null;
+    this.backendResponse = null;
+
+    // Build logout request details
+    const csrfToken = this.backendService.getCsrfToken();
+    this.requestDetails = {
+      provider: 'LOGOUT',
+      method: 'POST',
+      endpoint: '/api/auth/logout',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': csrfToken ? csrfToken.substring(0, 20) + '...' : 'Загрузка...'
+      },
+      body: {}
+    };
+
+    this.backendService.logout().subscribe({
+      next: (response) => {
+        this.ngZone.run(() => {
+          this.isLoggingOut = false;
+          this.backendResponse = response;
+          // Clear all user states
+          this.telegramAuthService.logout();
+          this.vkAuthService.logout();
+          this.yandexAuthService.logout();
+          this.resendAvailable = false;
+          this.telegramSuccess = 'Вы успешно вышли из аккаунта!';
+          setTimeout(() => (this.telegramSuccess = null), 3000);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          this.isLoggingOut = false;
+          this.logoutError = err.message || 'Не удалось выполнить выход';
+          // Still clear local state even if backend logout fails
+          this.telegramAuthService.logout();
+          this.vkAuthService.logout();
+          this.yandexAuthService.logout();
+          this.resendAvailable = false;
+          setTimeout(() => (this.logoutError = null), 5000);
+        });
+      }
+    });
+  }
+
   // ==================== RESEND AUTH ====================
 
   resendAuthRequest(): void {
@@ -344,12 +370,18 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.resendSuccess = null;
     this.backendResponse = null;
 
-    // Update request details to show resend attempt
-    this.requestDetails = {
-      ...this.requestDetails,
-      resend: true,
-      timestamp: new Date().toISOString()
-    };
+    const csrfToken = this.backendService.getCsrfToken();
+    if (this.requestDetails) {
+      this.requestDetails = {
+        ...this.requestDetails,
+        resend: true,
+        timestamp: new Date().toISOString(),
+        headers: {
+          ...this.requestDetails.headers,
+          'X-CSRF-TOKEN': csrfToken ? csrfToken.substring(0, 20) + '...' : 'Загрузка...'
+        }
+      };
+    }
 
     this.backendService.resendLastAuth().subscribe({
       next: (response) => {
@@ -410,7 +442,16 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.sessionId = response.sessionId;
           this.sessionReady = true;
           this.telegramSuccess = 'Сессия обновлена с новым CSRF токеном';
-          this.resendAvailable = false; // disable resend until new auth
+          this.resendAvailable = false;
+          if (this.requestDetails) {
+            this.requestDetails = {
+              ...this.requestDetails,
+              headers: {
+                ...this.requestDetails.headers,
+                'X-CSRF-TOKEN': response.csrfToken ? response.csrfToken.substring(0, 20) + '...' : 'Загрузка...'
+              }
+            };
+          }
           setTimeout(() => (this.telegramSuccess = null), 3000);
         });
       },
@@ -489,15 +530,21 @@ export class AuthComponent implements OnInit, OnDestroy {
       value: JSON.stringify(this.requestDetails.headers, null, 2)
     });
 
-    details.push({
-      label: 'Тело запроса',
-      value: JSON.stringify(this.requestDetails.body, null, 2)
-    });
+    if (this.requestDetails.body && Object.keys(this.requestDetails.body).length > 0) {
+      details.push({
+        label: 'Тело запроса',
+        value: JSON.stringify(this.requestDetails.body, null, 2)
+      });
+    }
 
     if (this.requestDetails.resend) {
       details.push({
         label: 'Повторная отправка',
         value: 'Да'
+      });
+      details.push({
+        label: 'Время повторной отправки',
+        value: this.requestDetails.timestamp || ''
       });
     }
 
