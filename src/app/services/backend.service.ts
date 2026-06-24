@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError, of, BehaviorSubject } from 'rxjs';
-import { catchError, map, timeout, tap, switchMap } from 'rxjs/operators';
+import { catchError, map, timeout, tap, switchMap, filter, take } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export type AuthProvider = 'TELEGRAM' | 'VKONTAKTE' | 'YANDEX';
@@ -40,6 +40,7 @@ export class BackendService {
   private sessionIdSubject = new BehaviorSubject<string | null>(null);
   private isInitialized = false;
   private initializationPromise: Promise<void> | null = null;
+  private initializationAttempted = false;
 
   constructor(private http: HttpClient) {
     this.initializeSession();
@@ -53,6 +54,11 @@ export class BackendService {
   }
 
   private initializeSession(): void {
+    if (this.initializationAttempted) {
+      return;
+    }
+    this.initializationAttempted = true;
+
     if (this.initializationPromise) {
       return;
     }
@@ -69,7 +75,9 @@ export class BackendService {
       })
       .catch((error) => {
         console.error('Failed to initialize session:', error);
+        // Retry after delay, but only once
         setTimeout(() => {
+          this.initializationAttempted = false;
           this.initializationPromise = null;
           this.initializeSession();
         }, 5000);
@@ -98,6 +106,7 @@ export class BackendService {
       return of(true);
     }
 
+    // Wait for initialization to complete
     return new Observable<boolean>((observer) => {
       const checkInterval = setInterval(() => {
         if (this.isInitialized && this.csrfTokenSubject.value) {
@@ -123,9 +132,12 @@ export class BackendService {
   }
 
   refreshSession(): Observable<SessionResponse> {
+    // Reset state and fetch a new session
     this.isInitialized = false;
     this.csrfTokenSubject.next(null);
     this.sessionIdSubject.next(null);
+    this.initializationAttempted = false;
+    this.initializationPromise = null;
 
     return this.fetchSession().pipe(
       tap((response) => {
@@ -148,6 +160,7 @@ export class BackendService {
     return this.ensureSessionInitialized().pipe(
       switchMap(() => {
         const url = this.getFullUrl(this.LOGIN_ENDPOINT);
+        // Always read the latest token from the subject just before sending
         const csrfToken = this.csrfTokenSubject.value;
 
         if (!csrfToken) {
@@ -166,6 +179,7 @@ export class BackendService {
 
         console.log(`Authenticating with ${provider} provider`);
         console.log('Request URL:', url);
+        console.log('Using CSRF token:', csrfToken);
         console.log('Payload:', payload);
 
         return this.http.post<AuthResponse>(url, payload, { headers })
@@ -173,11 +187,9 @@ export class BackendService {
             timeout(10000),
             map((response) => {
               console.log('Auth response:', response);
-              // Create result without spread conflict
               const result: AuthResponse = {
                 success: response.success !== undefined ? response.success : true
               };
-              // Copy other properties
               Object.keys(response).forEach(key => {
                 if (key !== 'success') {
                   result[key] = response[key];
@@ -186,6 +198,7 @@ export class BackendService {
               return result;
             }),
             catchError((error) => {
+              // If CSRF token is invalid, refresh and retry once
               if (error.status === 403 || error.status === 401) {
                 console.warn('CSRF token may be invalid, refreshing...');
                 return this.refreshSession().pipe(
@@ -202,7 +215,6 @@ export class BackendService {
                       .pipe(
                         timeout(10000),
                         map((retryResponse) => {
-                          // Create result without spread conflict
                           const result: AuthResponse = {
                             success: retryResponse.success !== undefined ? retryResponse.success : true
                           };
@@ -246,24 +258,53 @@ export class BackendService {
     return this.authenticate('YANDEX', token);
   }
 
+  /**
+   * Health check – uses existing session state if available,
+   * does NOT fetch a new session to avoid duplicates.
+   */
   healthCheck(): Observable<{ status: string; message: string; csrfAvailable: boolean }> {
-    return this.fetchSession()
-      .pipe(
-        timeout(5000),
-        map((response) => ({
-          status: 'online',
-          message: 'Backend is reachable',
-          csrfAvailable: !!response.csrfToken
-        })),
-        catchError((error) => {
-          console.warn('Health check failed:', error);
-          return of({
+    // If we already have a valid session, return that info immediately
+    if (this.isInitialized && this.csrfTokenSubject.value) {
+      return of({
+        status: 'online',
+        message: 'Backend is reachable (session active)',
+        csrfAvailable: true
+      });
+    }
+
+    // If initialization is in progress, wait for it
+    if (this.initializationPromise) {
+      return new Observable((observer) => {
+        this.initializationPromise?.then(() => {
+          observer.next({
+            status: 'online',
+            message: 'Backend is reachable (session initialized)',
+            csrfAvailable: !!this.csrfTokenSubject.value
+          });
+          observer.complete();
+        }).catch(() => {
+          observer.next({
             status: 'unknown',
             message: 'Cannot reach backend',
             csrfAvailable: false
           });
-        })
-      );
+          observer.complete();
+        });
+      });
+    }
+
+    // No session, try to fetch one (only if not attempted yet)
+    if (!this.initializationAttempted) {
+      this.initializeSession();
+      return this.healthCheck(); // recurse to check again
+    }
+
+    // Fallback: return unknown
+    return of({
+      status: 'unknown',
+      message: 'Cannot reach backend',
+      csrfAvailable: false
+    });
   }
 
   isSessionReady(): boolean {
