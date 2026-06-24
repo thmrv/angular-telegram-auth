@@ -16,6 +16,11 @@ import { Subscription } from 'rxjs';
   styleUrl: './auth.component.css',
 })
 export class AuthComponent implements OnInit, OnDestroy {
+
+  private isTelegramFresh = false;
+  private isVkFresh = false;
+  private isYandexFresh = false;
+
   // Telegram state
   telegramUser: TelegramUser | null = null;
   telegramIsLoading = false;
@@ -64,7 +69,7 @@ export class AuthComponent implements OnInit, OnDestroy {
     public yandexAuthService: YandexAuthService,
     private backendService: BackendService,
     private ngZone: NgZone
-  ) {}
+  ) { }
 
   ngOnInit(): void {
     this.checkBackendHealth();
@@ -81,8 +86,12 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.telegramIsLoading = false;
             setTimeout(() => (this.telegramSuccess = null), 5000);
 
-            if (user.id_token) {
+            // Only send auth request if this is a fresh login from the popup
+            if (this.isTelegramFresh && user.id_token) {
               this.sendTelegramAuthToBackend(user.id_token);
+              this.isTelegramFresh = false; // reset after sending
+            } else {
+              console.log('Telegram user loaded from storage, skipping auth request');
             }
           }
         });
@@ -107,7 +116,6 @@ export class AuthComponent implements OnInit, OnDestroy {
       })
     );
 
-    // VK subscriptions
     this.subscriptions.push(
       this.vkAuthService.user$.subscribe((user) => {
         this.ngZone.run(() => {
@@ -118,8 +126,12 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.vkIsLoading = false;
             setTimeout(() => (this.vkSuccess = null), 5000);
 
-            if (user.access_token) {
+            // Only send auth request if this is a fresh login from the popup
+            if (this.isVkFresh && user.access_token) {
               this.sendVKAuthToBackend(user.access_token);
+              this.isVkFresh = false; // reset after sending
+            } else {
+              console.log('VK user loaded from storage, skipping auth request');
             }
           }
         });
@@ -144,19 +156,22 @@ export class AuthComponent implements OnInit, OnDestroy {
       })
     );
 
-    // Yandex subscriptions
     this.subscriptions.push(
       this.yandexAuthService.user$.subscribe((user) => {
         this.ngZone.run(() => {
           this.yandexUser = user;
-          this.yandexIsAuthenticated = !!user;
+          this.telegramIsAuthenticated = !!user;
           if (user) {
             this.yandexSuccess = 'Успешная авторизация через Yandex!';
             this.yandexIsLoading = false;
             setTimeout(() => (this.yandexSuccess = null), 5000);
 
-            if (user.hash) {
+            // Only send auth request if this is a fresh login from the popup
+            if (this.isYandexFresh && user.hash) {
               this.sendYandexAuthToBackend(user.hash);
+              this.isYandexFresh = false; // reset after sending
+            } else {
+              console.log('Yandex user loaded from storage, skipping auth request');
             }
           }
         });
