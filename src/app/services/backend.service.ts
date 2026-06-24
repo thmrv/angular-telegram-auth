@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
 import { Observable, throwError, of, BehaviorSubject } from 'rxjs';
-import { catchError, map, timeout, tap, switchMap, filter, take } from 'rxjs/operators';
+import { catchError, map, timeout, tap, switchMap } from 'rxjs/operators';
 import { environment } from '../../environments/environment';
 
 export type AuthProvider = 'TELEGRAM' | 'VKONTAKTE' | 'YANDEX';
@@ -42,6 +42,10 @@ export class BackendService {
   private initializationPromise: Promise<void> | null = null;
   private initializationAttempted = false;
 
+  // Store last auth request for resend
+  private lastAuthProvider: AuthProvider | null = null;
+  private lastAuthToken: string | null = null;
+
   constructor(private http: HttpClient) {
     this.initializeSession();
   }
@@ -75,7 +79,6 @@ export class BackendService {
       })
       .catch((error) => {
         console.error('Failed to initialize session:', error);
-        // Retry after delay, but only once
         setTimeout(() => {
           this.initializationAttempted = false;
           this.initializationPromise = null;
@@ -106,7 +109,6 @@ export class BackendService {
       return of(true);
     }
 
-    // Wait for initialization to complete
     return new Observable<boolean>((observer) => {
       const checkInterval = setInterval(() => {
         if (this.isInitialized && this.csrfTokenSubject.value) {
@@ -131,8 +133,12 @@ export class BackendService {
     return this.sessionIdSubject.value;
   }
 
+  /**
+   * Refresh the session: fetch a new CSRF token and update the subject.
+   * Also resets the initialization state so that the new token is used.
+   */
   refreshSession(): Observable<SessionResponse> {
-    // Reset state and fetch a new session
+    // Reset state to force a fresh fetch
     this.isInitialized = false;
     this.csrfTokenSubject.next(null);
     this.sessionIdSubject.next(null);
@@ -150,6 +156,25 @@ export class BackendService {
   }
 
   /**
+   * Store the last auth request details for resend.
+   */
+  private storeLastAuth(provider: AuthProvider, token: string): void {
+    this.lastAuthProvider = provider;
+    this.lastAuthToken = token;
+  }
+
+  /**
+   * Resend the last authentication request using the current CSRF token.
+   * Returns an observable that emits the response.
+   */
+  resendLastAuth(): Observable<AuthResponse> {
+    if (!this.lastAuthProvider || !this.lastAuthToken) {
+      return throwError(() => new Error('No previous auth request to resend'));
+    }
+    return this.authenticate(this.lastAuthProvider, this.lastAuthToken);
+  }
+
+  /**
    * Unified authentication method for all providers
    * Sends request in the format:
    * POST /api/auth/login
@@ -157,6 +182,9 @@ export class BackendService {
    * with X-CSRF-TOKEN header
    */
   authenticate(provider: AuthProvider, token: string): Observable<AuthResponse> {
+    // Store for potential resend
+    this.storeLastAuth(provider, token);
+
     return this.ensureSessionInitialized().pipe(
       switchMap(() => {
         const url = this.getFullUrl(this.LOGIN_ENDPOINT);
@@ -263,7 +291,6 @@ export class BackendService {
    * does NOT fetch a new session to avoid duplicates.
    */
   healthCheck(): Observable<{ status: string; message: string; csrfAvailable: boolean }> {
-    // If we already have a valid session, return that info immediately
     if (this.isInitialized && this.csrfTokenSubject.value) {
       return of({
         status: 'online',
@@ -272,7 +299,6 @@ export class BackendService {
       });
     }
 
-    // If initialization is in progress, wait for it
     if (this.initializationPromise) {
       return new Observable((observer) => {
         this.initializationPromise?.then(() => {
@@ -293,13 +319,11 @@ export class BackendService {
       });
     }
 
-    // No session, try to fetch one (only if not attempted yet)
     if (!this.initializationAttempted) {
       this.initializeSession();
-      return this.healthCheck(); // recurse to check again
+      return this.healthCheck();
     }
 
-    // Fallback: return unknown
     return of({
       status: 'unknown',
       message: 'Cannot reach backend',

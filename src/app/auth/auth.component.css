@@ -314,11 +314,12 @@ h1 {
   text-align: center;
 }
 
-.session-actions {
+.action-buttons {
   display: flex;
   justify-content: center;
-  margin-top: 20px;
   gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
 }
 
 .btn {

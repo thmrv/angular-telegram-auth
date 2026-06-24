@@ -46,6 +46,12 @@ export class AuthComponent implements OnInit, OnDestroy {
   sessionId: string | null = null;
   sessionReady = false;
 
+  // Resend button state
+  resendAvailable = false;
+  resendIsLoading = false;
+  resendError: string | null = null;
+  resendSuccess: string | null = null;
+
   private subscriptions: Subscription[] = [];
 
   constructor(
@@ -71,7 +77,6 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.telegramIsLoading = false;
             setTimeout(() => (this.telegramSuccess = null), 5000);
 
-            // Send auth data to backend using the new unified format
             if (user.id_token) {
               this.sendTelegramAuthToBackend(user.id_token);
             }
@@ -109,7 +114,6 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.vkIsLoading = false;
             setTimeout(() => (this.vkSuccess = null), 5000);
 
-            // Send auth data to backend using the new unified format
             if (user.access_token) {
               this.sendVKAuthToBackend(user.access_token);
             }
@@ -147,7 +151,6 @@ export class AuthComponent implements OnInit, OnDestroy {
             this.yandexIsLoading = false;
             setTimeout(() => (this.yandexSuccess = null), 5000);
 
-            // Send auth data to backend using the new unified format
             if (user.hash) {
               this.sendYandexAuthToBackend(user.hash);
             }
@@ -185,6 +188,8 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.telegramIsLoading = true;
     this.telegramError = null;
     this.telegramSuccess = null;
+    this.backendResponse = null;
+    this.resendAvailable = false;
     this.telegramAuthService.startTelegramAuth();
   }
 
@@ -213,12 +218,14 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.ngZone.run(() => {
             this.backendResponse = response;
             this.telegramSuccess = 'Данные авторизации отправлены в бэкенд!';
+            this.resendAvailable = true;
             setTimeout(() => (this.telegramSuccess = null), 5000);
           });
         },
         error: (err) => {
           this.ngZone.run(() => {
             this.telegramError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+            this.resendAvailable = true; // even if error, we can retry
           });
         }
       });
@@ -231,6 +238,8 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.vkIsLoading = true;
     this.vkError = null;
     this.vkSuccess = null;
+    this.backendResponse = null;
+    this.resendAvailable = false;
     this.vkAuthService.startVKAuth();
   }
 
@@ -259,12 +268,14 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.ngZone.run(() => {
             this.backendResponse = response;
             this.vkSuccess = 'Данные авторизации отправлены в бэкенд!';
+            this.resendAvailable = true;
             setTimeout(() => (this.vkSuccess = null), 5000);
           });
         },
         error: (err) => {
           this.ngZone.run(() => {
             this.vkError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+            this.resendAvailable = true;
           });
         }
       });
@@ -277,6 +288,8 @@ export class AuthComponent implements OnInit, OnDestroy {
     this.yandexIsLoading = true;
     this.yandexError = null;
     this.yandexSuccess = null;
+    this.backendResponse = null;
+    this.resendAvailable = false;
     this.yandexAuthService.startYandexAuth();
   }
 
@@ -305,15 +318,55 @@ export class AuthComponent implements OnInit, OnDestroy {
           this.ngZone.run(() => {
             this.backendResponse = response;
             this.yandexSuccess = 'Данные авторизации отправлены в бэкенд!';
+            this.resendAvailable = true;
             setTimeout(() => (this.yandexSuccess = null), 5000);
           });
         },
         error: (err) => {
           this.ngZone.run(() => {
             this.yandexError = err.message || 'Не удалось отправить данные авторизации в бэкенд';
+            this.resendAvailable = true;
           });
         }
       });
+    });
+  }
+
+  // ==================== RESEND AUTH ====================
+
+  resendAuthRequest(): void {
+    if (!this.resendAvailable) {
+      return;
+    }
+
+    this.resendIsLoading = true;
+    this.resendError = null;
+    this.resendSuccess = null;
+    this.backendResponse = null;
+
+    // Update request details to show resend attempt
+    this.requestDetails = {
+      ...this.requestDetails,
+      resend: true,
+      timestamp: new Date().toISOString()
+    };
+
+    this.backendService.resendLastAuth().subscribe({
+      next: (response) => {
+        this.ngZone.run(() => {
+          this.resendIsLoading = false;
+          this.backendResponse = response;
+          this.resendSuccess = 'Запрос успешно повторно отправлен!';
+          setTimeout(() => (this.resendSuccess = null), 5000);
+        });
+      },
+      error: (err) => {
+        this.ngZone.run(() => {
+          this.resendIsLoading = false;
+          this.resendError = err.message || 'Не удалось повторно отправить запрос';
+          setTimeout(() => (this.resendError = null), 5000);
+        });
+      }
     });
   }
 
@@ -352,15 +405,20 @@ export class AuthComponent implements OnInit, OnDestroy {
   refreshSession(): void {
     this.backendService.refreshSession().subscribe({
       next: (response) => {
-        this.csrfToken = response.csrfToken;
-        this.sessionId = response.sessionId;
-        this.sessionReady = true;
-        this.telegramSuccess = 'Сессия обновлена с новым CSRF токеном';
-        setTimeout(() => (this.telegramSuccess = null), 3000);
+        this.ngZone.run(() => {
+          this.csrfToken = response.csrfToken;
+          this.sessionId = response.sessionId;
+          this.sessionReady = true;
+          this.telegramSuccess = 'Сессия обновлена с новым CSRF токеном';
+          this.resendAvailable = false; // disable resend until new auth
+          setTimeout(() => (this.telegramSuccess = null), 3000);
+        });
       },
       error: (error) => {
-        this.telegramError = 'Не удалось обновить сессию: ' + error.message;
-        setTimeout(() => (this.telegramError = null), 3000);
+        this.ngZone.run(() => {
+          this.telegramError = 'Не удалось обновить сессию: ' + error.message;
+          setTimeout(() => (this.telegramError = null), 3000);
+        });
       }
     });
   }
@@ -435,6 +493,13 @@ export class AuthComponent implements OnInit, OnDestroy {
       label: 'Тело запроса',
       value: JSON.stringify(this.requestDetails.body, null, 2)
     });
+
+    if (this.requestDetails.resend) {
+      details.push({
+        label: 'Повторная отправка',
+        value: 'Да'
+      });
+    }
 
     return details;
   }
